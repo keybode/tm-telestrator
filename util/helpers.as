@@ -2,6 +2,15 @@
 // after this segment, so callers drawing multi-segment paths can chain it call-to-call and
 // avoid resetting the dash pattern at every vertex. AngelScript doesn't permit `&inout` on
 // primitive types, hence the return-value plumbing.
+//
+// Iterates by integer cycle index k (each k contributes one dash spanning [k*cycle - phase,
+// k*cycle - phase + dashLen] in arc-length space, clipped to [0, len]). This is bounded by
+// ceil(len/cycle) + 1 iterations and avoids the FP boundary trap of the previous walk-by-step
+// formulation, where Math::Floor((phase+traveled)/cycle) at a cycle boundary could land
+// `withinCycle` just inside the gap and produce a near-zero `step` that, on a long segment,
+// fell below the float precision of `traveled` — infinite loop. MAX_DASHES is a defensive
+// cap for pathological lengths (e.g. a world-anchored mark whose anchor projects far
+// off-screen mid-camera-move) so we truncate rendering rather than stall the frame.
 float DrawDashedSegment(UI::DrawList@ drawList, const vec2 &in a, const vec2 &in b, const vec4 &in c, float thickness, float phase) {
     float dashLen = Math::Max(thickness * 3.0f, 6.0f);
     float gapLen = dashLen * 0.6f;
@@ -12,19 +21,19 @@ float DrawDashedSegment(UI::DrawList@ drawList, const vec2 &in a, const vec2 &in
     if (len < 0.01f) return phase;
     vec2 unit = vec2(d.x / len, d.y / len);
 
-    float traveled = 0.0f;
-    while (traveled < len) {
-        float pos = phase + traveled;
-        float withinCycle = pos - Math::Floor(pos / cycle) * cycle;
-        bool inDash = withinCycle < dashLen;
-        float remaining = (inDash ? dashLen : cycle) - withinCycle;
-        float step = Math::Min(remaining, len - traveled);
-        if (inDash) {
-            vec2 p1 = a + unit * traveled;
-            vec2 p2 = a + unit * (traveled + step);
-            drawList.AddLine(p1, p2, c, thickness);
+    const int MAX_DASHES = 4000;
+    int k = int(Math::Floor(phase / cycle));
+    int drawn = 0;
+    while (drawn < MAX_DASHES) {
+        float dashStart = float(k) * cycle - phase;
+        if (dashStart >= len) break;
+        float clipStart = Math::Max(dashStart, 0.0f);
+        float clipEnd = Math::Min(dashStart + dashLen, len);
+        if (clipEnd > clipStart) {
+            drawList.AddLine(a + unit * clipStart, a + unit * clipEnd, c, thickness);
         }
-        traveled += step;
+        k++;
+        drawn++;
     }
     return phase + len;
 }
