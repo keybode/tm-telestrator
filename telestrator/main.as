@@ -149,7 +149,6 @@ void StartStroke(const vec2 &in startPos, bool highlighter) {
         s.Color = vec4(g_CurrentColor.x, g_CurrentColor.y, g_CurrentColor.z, g_CurrentColor.w * 0.35f);
         s.Thickness = Math::Max(S_BrushThickness * 4.0f, 12.0f);
         s.Dashed = false;
-        // Tag for the union-mesh renderer; mesh itself is rebuilt at FinishStroke.
         s.Highlighter = true;
     } else {
         s.Color = g_CurrentColor;
@@ -175,17 +174,16 @@ void AppendPointToActiveStroke(const vec2 &in pos) {
     vec2 lastPoint = g_ActiveStroke.Points[g_ActiveStroke.Points.Length - 1];
     if (Distance(lastPoint, storedPos) >= S_MinPointDistance) {
         g_ActiveStroke.Points.InsertLast(storedPos);
-        // Mark dirty only when a point is actually inserted so the mesh doesn't rebuild
-        // on every frame the cursor sits idle.
+        // Marking dirty only on actual insertion keeps the mesh from rebuilding while
+        // the cursor sits below S_MinPointDistance.
         g_ActiveStroke.MeshDirty = true;
     }
 }
 
 void FinishStroke() {
     if (g_ActiveStroke !is null) {
-        // Bake the union mesh now (highlighter only — RebuildMesh is a no-op for pen).
-        // Doing it here means the mid-drag fallback render snaps to the clean uniform-alpha
-        // mesh on release, and we don't pay rebuild cost per frame during the drag.
+        // Final mesh bake (no-op for pen). Mid-drag uses lazy rebuild; this guarantees the
+        // committed stroke has a fresh mesh even if the last AppendPoint didn't.
         g_ActiveStroke.RebuildMesh();
         @g_ActiveStroke = null;
         ClearRedoStack();

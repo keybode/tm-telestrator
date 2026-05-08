@@ -147,31 +147,18 @@ class Stroke : Drawable {
         if (Points.Length == 0) return;
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
 
-        // Highlighter: render the union mesh as filled quads. Every pixel inside the
-        // swept-disc shape is covered by exactly one rect, so the alpha is uniform
-        // regardless of how many times the path crossed itself. Lazily rebuilt during
-        // active drag (AppendPointToActiveStroke marks dirty per added point) so the
-        // mid-drag preview matches what the user will see after release. If the grid
-        // bound is exceeded `BuildStrokeUnionMesh` returns empty — fall through to the
-        // per-segment fallback below.
+        // Highlighter: render the union mesh — uniform alpha across self-crossings. Falls
+        // through to the per-segment renderer if the grid bound is exceeded
+        // (BuildStrokeUnionMesh returns empty).
         if (Highlighter) {
             if (MeshDirty) RebuildMesh();
             if (Mesh.Length > 0) {
-                for (uint i = 0; i < Mesh.Length; i++) {
-                    vec4 r = Mesh[i];
-                    drawList.AddQuadFilled(
-                        vec2(r.x, r.y),
-                        vec2(r.z, r.y),
-                        vec2(r.z, r.w),
-                        vec2(r.x, r.w),
-                        c);
-                }
+                DrawRectMesh(drawList, Mesh, c);
                 return;
             }
         }
 
         if (Points.Length == 1) {
-            // Single point (mid-drag dot): render as a disc so the stroke is visible.
             drawList.AddCircleFilled(Points[0], Thickness * 0.5f, c);
             return;
         }
@@ -184,9 +171,8 @@ class Stroke : Drawable {
             return;
         }
 
-        // Solid-line fallback for pen strokes and for highlighter strokes that are still
-        // mid-drag (mesh not yet rebuilt). A disc at every vertex closes the triangular
-        // gaps that AddLine's butt caps leave on the outside of every bend.
+        // The vertex discs are round joints/caps — without them, AddLine's butt caps
+        // leave triangular gaps on the outside of every bend.
         for (uint i = 1; i < Points.Length; i++) {
             drawList.AddLine(Points[i - 1], Points[i], c, Thickness);
         }
@@ -223,28 +209,11 @@ class Stroke : Drawable {
         for (uint i = 0; i < Points.Length; i++) {
             Points[i] = Points[i] + delta;
         }
-        // Mesh travels with Points so we don't have to rebuild on every world-anchor frame
-        // translate. World-anchor's per-frame +offset/-offset pair cancels at FP precision,
-        // matching what already happens to Points.
-        for (uint i = 0; i < Mesh.Length; i++) {
-            Mesh[i] = vec4(Mesh[i].x + delta.x, Mesh[i].y + delta.y, Mesh[i].z + delta.x, Mesh[i].w + delta.y);
-        }
+        TranslateRectArray(Mesh, delta);
     }
 
     void Bounds(vec2 &out boundsMin, vec2 &out boundsMax) override {
-        if (Points.Length == 0) {
-            boundsMin = vec2(0, 0);
-            boundsMax = vec2(0, 0);
-            return;
-        }
-        boundsMin = Points[0];
-        boundsMax = Points[0];
-        for (uint i = 1; i < Points.Length; i++) {
-            boundsMin.x = Math::Min(boundsMin.x, Points[i].x);
-            boundsMin.y = Math::Min(boundsMin.y, Points[i].y);
-            boundsMax.x = Math::Max(boundsMax.x, Points[i].x);
-            boundsMax.y = Math::Max(boundsMax.y, Points[i].y);
-        }
+        ComputeBounds(Points, boundsMin, boundsMax);
     }
 
     bool IsNonDegenerate() override { return Points.Length >= 2; }
@@ -909,15 +878,7 @@ class Polygon : Drawable {
         if (Filled && !building && Vertices.Length >= 3) {
             if (FillMeshDirty) RebuildFillMesh();
             vec4 fillColor = vec4(c.x, c.y, c.z, c.w * 0.25f);
-            for (uint i = 0; i < FillMesh.Length; i++) {
-                vec4 r = FillMesh[i];
-                drawList.AddQuadFilled(
-                    vec2(r.x, r.y),
-                    vec2(r.z, r.y),
-                    vec2(r.z, r.w),
-                    vec2(r.x, r.w),
-                    fillColor);
-            }
+            DrawRectMesh(drawList, FillMesh, fillColor);
         }
 
         for (uint i = 1; i < Vertices.Length; i++) {
@@ -958,27 +919,11 @@ class Polygon : Drawable {
         for (uint i = 0; i < Vertices.Length; i++) {
             Vertices[i] = Vertices[i] + delta;
         }
-        // Mesh travels with Vertices so Select-tool body drags and world-anchor offsets
-        // don't force a full rebuild.
-        for (uint i = 0; i < FillMesh.Length; i++) {
-            FillMesh[i] = vec4(FillMesh[i].x + delta.x, FillMesh[i].y + delta.y, FillMesh[i].z + delta.x, FillMesh[i].w + delta.y);
-        }
+        TranslateRectArray(FillMesh, delta);
     }
 
     void Bounds(vec2 &out boundsMin, vec2 &out boundsMax) override {
-        if (Vertices.Length == 0) {
-            boundsMin = vec2(0, 0);
-            boundsMax = vec2(0, 0);
-            return;
-        }
-        boundsMin = Vertices[0];
-        boundsMax = Vertices[0];
-        for (uint i = 1; i < Vertices.Length; i++) {
-            boundsMin.x = Math::Min(boundsMin.x, Vertices[i].x);
-            boundsMin.y = Math::Min(boundsMin.y, Vertices[i].y);
-            boundsMax.x = Math::Max(boundsMax.x, Vertices[i].x);
-            boundsMax.y = Math::Max(boundsMax.y, Vertices[i].y);
-        }
+        ComputeBounds(Vertices, boundsMin, boundsMax);
     }
 
     array<vec2> GetHandles() override {

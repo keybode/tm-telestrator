@@ -43,6 +43,24 @@ float Distance(const vec2 &in a, const vec2 &in b) {
     return Math::Sqrt(d.x * d.x + d.y * d.y);
 }
 
+// AABB of a vec2 array. Returns (0,0)-(0,0) on empty input — callers that care about
+// emptiness should check `pts.Length` first.
+void ComputeBounds(const array<vec2> &in pts, vec2 &out boundsMin, vec2 &out boundsMax) {
+    if (pts.Length == 0) {
+        boundsMin = vec2(0, 0);
+        boundsMax = vec2(0, 0);
+        return;
+    }
+    boundsMin = pts[0];
+    boundsMax = pts[0];
+    for (uint i = 1; i < pts.Length; i++) {
+        if (pts[i].x < boundsMin.x) boundsMin.x = pts[i].x;
+        if (pts[i].y < boundsMin.y) boundsMin.y = pts[i].y;
+        if (pts[i].x > boundsMax.x) boundsMax.x = pts[i].x;
+        if (pts[i].y > boundsMax.y) boundsMax.y = pts[i].y;
+    }
+}
+
 float PointToSegmentDistance(const vec2 &in p, const vec2 &in a, const vec2 &in b) {
     vec2 ab = b - a;
     float lenSq = ab.x * ab.x + ab.y * ab.y;
