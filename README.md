@@ -1,6 +1,7 @@
 # Telestrator
 
-Screen-drawing overlay [Openplanet](https://openplanet.dev) plugin for Trackmania (2020) — telestrator-style annotation for coaching, replay analysis, and streaming racing-line explanations. Made by **Trev_TM** ([Twitch](https://www.twitch.tv/trev_tm)) and improved by me ([keybode](https://github.com/keybode)).
+Screen-drawing overlay [Openplanet](https://openplanet.dev) plugin for Trackmania (2020) — telestrator-style annotation for coaching, replay analysis, and streaming racing-line explanations.
+Made by **Trev_TM** ([Twitch](https://www.twitch.tv/trev_tm)) and improved by me ([keybode](https://github.com/keybode)).
 
 ## Features
 
