@@ -55,7 +55,7 @@ class Stroke : Drawable {
         if (Dashed) {
             float phase = 0.0f;
             for (uint i = 1; i < Points.Length; i++) {
-                DrawDashedSegment(drawList, Points[i - 1], Points[i], c, Thickness, phase);
+                phase = DrawDashedSegment(drawList, Points[i - 1], Points[i], c, Thickness, phase);
             }
         } else {
             for (uint i = 1; i < Points.Length; i++) {
@@ -128,8 +128,7 @@ class Arrow : Drawable {
     void Draw(UI::DrawList@ drawList, float alphaMul) override {
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
         if (Dashed) {
-            float phase = 0.0f;
-            DrawDashedSegment(drawList, Start, End, c, Thickness, phase);
+            DrawDashedSegment(drawList, Start, End, c, Thickness, 0.0f);
         } else {
             drawList.AddLine(Start, End, c, Thickness);
         }
@@ -196,8 +195,7 @@ class LineSeg : Drawable {
     void Draw(UI::DrawList@ drawList, float alphaMul) override {
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
         if (Dashed) {
-            float phase = 0.0f;
-            DrawDashedSegment(drawList, Start, End, c, Thickness, phase);
+            DrawDashedSegment(drawList, Start, End, c, Thickness, 0.0f);
         } else {
             drawList.AddLine(Start, End, c, Thickness);
         }
@@ -573,8 +571,7 @@ class Measurement : Drawable {
     void Draw(UI::DrawList@ drawList, float alphaMul) override {
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
         if (Dashed) {
-            float phase = 0.0f;
-            DrawDashedSegment(drawList, Start, End, c, Thickness, phase);
+            DrawDashedSegment(drawList, Start, End, c, Thickness, 0.0f);
         } else {
             drawList.AddLine(Start, End, c, Thickness);
         }
@@ -650,8 +647,7 @@ class Bracket : Drawable {
     void Draw(UI::DrawList@ drawList, float alphaMul) override {
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
         if (Dashed) {
-            float phase = 0.0f;
-            DrawDashedSegment(drawList, Start, End, c, Thickness, phase);
+            DrawDashedSegment(drawList, Start, End, c, Thickness, 0.0f);
         } else {
             drawList.AddLine(Start, End, c, Thickness);
         }
@@ -718,8 +714,7 @@ class Polygon : Drawable {
 
     void DrawEdge(UI::DrawList@ drawList, const vec2 &in a, const vec2 &in b, const vec4 &in c) {
         if (Dashed) {
-            float phase = 0.0f;
-            DrawDashedSegment(drawList, a, b, c, Thickness, phase);
+            DrawDashedSegment(drawList, a, b, c, Thickness, 0.0f);
         } else {
             drawList.AddLine(a, b, c, Thickness);
         }
@@ -855,7 +850,7 @@ class CurvedArrow : Drawable {
             float phase = 0.0f;
             for (int i = 1; i <= segments; i++) {
                 vec2 p = Sample(float(i) / float(segments));
-                DrawDashedSegment(drawList, prev, p, c, Thickness, phase);
+                phase = DrawDashedSegment(drawList, prev, p, c, Thickness, phase);
                 prev = p;
             }
         } else {

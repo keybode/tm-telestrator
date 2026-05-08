@@ -1,13 +1,15 @@
-// Dashed-line helper. `phase` accumulates across calls so multi-segment strokes don't
-// reset the dash pattern at every vertex.
-void DrawDashedSegment(UI::DrawList@ drawList, const vec2 &in a, const vec2 &in b, const vec4 &in c, float thickness, float &inout phase) {
+// Dashed-line helper. `phase` is the starting dash offset; the returned value is the offset
+// after this segment, so callers drawing multi-segment paths can chain it call-to-call and
+// avoid resetting the dash pattern at every vertex. AngelScript doesn't permit `&inout` on
+// primitive types, hence the return-value plumbing.
+float DrawDashedSegment(UI::DrawList@ drawList, const vec2 &in a, const vec2 &in b, const vec4 &in c, float thickness, float phase) {
     float dashLen = Math::Max(thickness * 3.0f, 6.0f);
     float gapLen = dashLen * 0.6f;
     float cycle = dashLen + gapLen;
 
     vec2 d = b - a;
     float len = Math::Sqrt(d.x * d.x + d.y * d.y);
-    if (len < 0.01f) return;
+    if (len < 0.01f) return phase;
     vec2 unit = vec2(d.x / len, d.y / len);
 
     float traveled = 0.0f;
@@ -24,7 +26,7 @@ void DrawDashedSegment(UI::DrawList@ drawList, const vec2 &in a, const vec2 &in 
         }
         traveled += step;
     }
-    phase += len;
+    return phase + len;
 }
 
 float Distance(const vec2 &in a, const vec2 &in b) {
