@@ -12,7 +12,7 @@ There is no build, lint, or test tooling — Openplanet loads `.as` source files
 
 Openplanet loads `.as` files recursively from the plugin folder, so subfolders are purely organizational. There are no imports or namespaces — every global, setting, class, and function is visible across files regardless of folder. Split is by concern:
 
-- [main.as](main.as) — runtime: globals, OP callbacks (`Main`, `Render`, `RenderMenu`, `OnDestroyed`, `OnDisabled`), stroke lifecycle, drawable management, canvas rendering. Lives at the root.
+- [telestrator/main.as](telestrator/main.as) — runtime: globals, OP callbacks (`Main`, `Render`, `RenderMenu`, `OnDestroyed`, `OnDisabled`), stroke lifecycle, drawable management, canvas rendering.
 - [state/settings.as](state/settings.as) — `[Setting ...]`-decorated variables (`S_BrushThickness`, `S_Dashed`, `S_HotkeyToggle`, `S_LockRed`, `S_CustomColor`, ...) auto-persisted by Openplanet.
 - [ui/toolbar.as](ui/toolbar.as) — `RenderToolbar`, `RenderToolSelector`, `SetTool`, `RenderPalette`, `RenderColorSwatch`, and the floating `RenderTextInput` / `CommitTextInput` / `CloseTextInput` popup.
 - [ui/input.as](ui/input.as) — `HandleHotkeys`, `HandleDrawingInput` (mouse routing into per-tool handlers), `CanDraw`, `CancelInFlight`.

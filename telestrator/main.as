@@ -19,7 +19,7 @@
     - state persists across sessions
 
     Source layout (Openplanet loads .as files recursively, so the folders are purely organizational):
-    - main.as ................... runtime: globals, OP callbacks, stroke lifecycle, drawable management, canvas rendering
+    - telestrator/main.as ....... runtime: globals, OP callbacks, stroke lifecycle, drawable management, canvas rendering
     - state/settings.as ......... [Setting]-decorated variables auto-persisted by Openplanet
     - state/persistence.as ...... SaveState / LoadState / (de)serialization helpers
     - ui/toolbar.as ............. toolbar window, tool selector, palette, floating text-input popup
