@@ -10,10 +10,19 @@
 class Drawable {
     vec4 Color;
     uint64 CreatedAt;
+    // World-anchor state. When WorldAnchored is true, DrawAll rigidly translates the
+    // drawable each frame by (project(WorldAnchor) - ScreenAnchorAtCommit) so the mark
+    // tracks the world point captured at press time. See util/projection.as.
+    bool WorldAnchored;
+    vec3 WorldAnchor;
+    vec2 ScreenAnchorAtCommit;
 
     Drawable() {
         Color = vec4(1.0f, 1.0f, 1.0f, 1.0f);
         CreatedAt = Time::Now;
+        WorldAnchored = false;
+        WorldAnchor = vec3(0, 0, 0);
+        ScreenAnchorAtCommit = vec2(0, 0);
     }
 
     void Draw(UI::DrawList@ drawList, float alphaMul) {}
@@ -34,6 +43,11 @@ class Drawable {
     Json::Value@ Serialize() {
         Json::Value@ obj = Json::Object();
         obj["color"] = SerializeColor(Color);
+        if (WorldAnchored) {
+            obj["worldAnchored"] = true;
+            obj["worldAnchor"] = SerializeVec3(WorldAnchor);
+            obj["screenAnchor"] = SerializePoint(ScreenAnchorAtCommit);
+        }
         return obj;
     }
 }

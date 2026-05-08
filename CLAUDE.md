@@ -20,6 +20,7 @@ Openplanet loads `.as` files recursively from the plugin folder, so subfolders a
 - [ui/drawables.as](ui/drawables.as) — `Drawable` base class and subclasses (`Stroke`, `Arrow`, `LineSeg`, `RectShape`, `CircleShape`, `EllipseShape`, `TextLabel`, `NumberMarker`) plus `PaletteColor`.
 - [state/persistence.as](state/persistence.as) — `SaveState` / `LoadState` and the JSON (de)serialization helpers.
 - [util/helpers.as](util/helpers.as) — math (`Distance`, `PointToSegmentDistance`, `ConstrainAngle`, `ConstrainSquare`), modifier-key checks (`IsShiftDown`, `IsCtrlDown`), `IsColorLocked`, `IsInMap`, `ColorsEqual` / `ColorsEqualRGB`, and the dashed-line helper.
+- [util/projection.as](util/projection.as) — world-anchor support: `ComputeWorldAnchor` (screen → world via inverted view-projection through the car's Y plane), `GetAnchorOffset` (per-frame screen translate for an anchored drawable), `TryGetCarY`, `ProjectWorldToScreen`. Depends on the `Camera` and `VehicleState` plugins (declared in [info.toml](info.toml)).
 
 ## API reference
 
@@ -58,6 +59,18 @@ This is the one piece of state that's easy to misunderstand. It exists to preven
 ### Map guard
 
 `IsInMap()` checks `GetApp().CurrentPlayground !is null`. The toolbar early-returns when not in a map and the drawing state is gated through `CanDraw()`. New features that touch game state should go through the same guard.
+
+### World anchoring
+
+When `S_WorldAnchor` is on, fresh marks capture a world-space anchor at press time so they slide with the camera instead of staying glued to the screen. The anchor lives on the `Drawable` base class as three fields: `WorldAnchored` (bool), `WorldAnchor` (vec3), `ScreenAnchorAtCommit` (vec2 — the screen position the anchor projected to at commit time). Per-tool press handlers set these via `AttachWorldAnchor` in [ui/tools.as](ui/tools.as).
+
+The renderer applies the anchor as a **rigid screen-space translate** in `DrawWithAnchor` ([telestrator/main.as](telestrator/main.as)): each frame, `offset = projectWorld(WorldAnchor) - ScreenAnchorAtCommit` is added to all stored screen coords via `Translate(offset)` / `Translate(-offset)` around `Draw`. Shape geometry is otherwise untouched — no perspective deformation. If the anchor is currently behind the camera, the drawable is skipped entirely (reappears once back in front).
+
+Because the renderer offsets stored coords, **any input path that reads stored geometry must subtract `GetDrawableOffset(d)` from `mousePos` before hit-testing** — see `HandleSelect` / `HandleEraser` and `DrawCursorPreview`'s hover hint. Likewise, `DrawSelectionHighlight` / `DrawSelectionHandles` add the offset back to `Bounds` / `GetHandles` output.
+
+Inverse projection (screen → world at a given Y) is in `ScreenToWorldAtY` ([util/projection.as](util/projection.as)). It rebuilds the camera's view-projection matrix from `Camera::GetCurrent()` using the same composition the camera plugin uses internally, inverts it, and intersects the resulting clip-space ray with the Y plane. If anything fails (no camera, ray parallel, intersection behind near plane) it returns false and the mark stays plain screen-anchored. The Y plane defaults to the controlled car's altitude at click time, sampled via `VehicleState::ViewingPlayerState().Position.y` — fine for ground-level marks; elevated track sections (ramps, loops) will drift.
+
+The anchor fields are persisted via the base `Drawable.Serialize()` (only when `WorldAnchored` is true) and restored after the per-type cast in `DeserializeDrawable`. Subclasses don't need to know about anchoring — it's all on the base class.
 
 ## Conventions
 

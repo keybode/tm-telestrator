@@ -45,6 +45,12 @@ void RenderToolbar() {
     S_AutoFadeSeconds = UI::SliderFloat("Auto-fade (s)", S_AutoFadeSeconds, 0.0f, 60.0f);
     S_Dashed = UI::Checkbox("Dashed lines", S_Dashed);
     S_PolygonFill = UI::Checkbox("Polygon fill (translucent)", S_PolygonFill);
+    S_WorldAnchor = UI::Checkbox("World-anchor new marks", S_WorldAnchor);
+    if (UI::BeginItemTooltip()) {
+        UI::Text("New marks stick to the world point under the cursor (at car altitude)");
+        UI::Text("instead of staying glued to the screen. Existing marks are unchanged.");
+        UI::EndTooltip();
+    }
 
     UI::Separator();
     UI::Text("Palette");
@@ -275,6 +281,11 @@ void CommitTextInput() {
         t.Position = g_TextInputPos;
         t.Text = g_TextInputBuffer;
         t.Size = S_TextSize;
+        if (g_TextInputWorldAnchored) {
+            t.WorldAnchored = true;
+            t.WorldAnchor = g_TextInputWorldAnchor;
+            t.ScreenAnchorAtCommit = g_TextInputPos;
+        }
         g_Drawables.InsertLast(t);
         ClearRedoStack();
         SaveState();

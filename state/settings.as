@@ -23,6 +23,12 @@ bool S_Dashed = false;
 [Setting name="Polygon fill (translucent)"]
 bool S_PolygonFill = false;
 
+// When enabled, marks committed in-map capture a world-space anchor at the player car's
+// altitude so they slide with the camera instead of staying glued to the screen. Falls
+// back to plain screen-space when not in-map or no car is available — see util/projection.as.
+[Setting name="World-anchor new marks"]
+bool S_WorldAnchor = false;
+
 // Read once in Main() to set the initial g_WindowVisible state. Mid-session close/open is
 // independent of this flag — it only seeds the window state at plugin load.
 [Setting name="Open toolbar automatically on startup"]

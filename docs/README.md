@@ -17,3 +17,7 @@ Minimal reference for the Openplanet API surface used by `main.as`. This is *not
 | [Time.md](Time.md) | `Time::Now` |
 | [Game.md](Game.md) | `GetApp()` and the `CurrentPlayground` in-map guard |
 | [Settings.md](Settings.md) | `[Setting]` attribute syntax for persisted plugin variables |
+| [Camera.md](Camera.md) | `Camera::` dependency: `ToScreenSpace`, `IsBehind`, `GetCurrent` |
+| [VehicleState.md](VehicleState.md) | `VehicleState::ViewingPlayerState` + `CSceneVehicleVisState.Position` |
+| [Mat4.md](Mat4.md) | `mat4` / `vec4` / `iso4` — used to invert the camera view-projection |
+| [Display.md](Display.md) | `Display::GetSize` for viewport-pixel dimensions |

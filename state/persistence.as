@@ -162,6 +162,11 @@ Drawable@ DeserializeDrawable(Json::Value@ obj) {
     if (d !is null && obj.HasKey("color")) {
         d.Color = DeserializeColor(obj["color"]);
     }
+    if (d !is null && obj.HasKey("worldAnchored") && bool(obj["worldAnchored"])) {
+        d.WorldAnchored = true;
+        if (obj.HasKey("worldAnchor")) d.WorldAnchor = DeserializeVec3(obj["worldAnchor"]);
+        if (obj.HasKey("screenAnchor")) d.ScreenAnchorAtCommit = DeserializePoint(obj["screenAnchor"]);
+    }
     return d;
 }
 
@@ -193,4 +198,19 @@ vec2 DeserializePoint(Json::Value@ v) {
         return vec2(0, 0);
     }
     return vec2(float(v[0]), float(v[1]));
+}
+
+Json::Value@ SerializeVec3(const vec3 &in p) {
+    Json::Value@ arr = Json::Array();
+    arr.Add(Json::Value(p.x));
+    arr.Add(Json::Value(p.y));
+    arr.Add(Json::Value(p.z));
+    return arr;
+}
+
+vec3 DeserializeVec3(Json::Value@ v) {
+    if (v is null || v.GetType() != Json::Type::Array || v.Length < 3) {
+        return vec3(0, 0, 0);
+    }
+    return vec3(float(v[0]), float(v[1]), float(v[2]));
 }

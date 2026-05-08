@@ -60,6 +60,10 @@ bool g_TextInputOpen = false;
 bool g_TextInputNeedsFocus = false;
 vec2 g_TextInputPos;
 string g_TextInputBuffer;
+// Captured at HandleText press time (when S_WorldAnchor was on and resolved); applied to
+// the TextLabel in CommitTextInput. Plain screen-space mark if the resolve failed.
+bool g_TextInputWorldAnchored = false;
+vec3 g_TextInputWorldAnchor = vec3(0, 0, 0);
 
 bool g_EraseDirty = false;
 
@@ -142,19 +146,23 @@ void StartStroke(const vec2 &in startPos, bool highlighter) {
         s.Dashed = S_Dashed;
     }
     s.Points.InsertLast(startPos);
+    AttachWorldAnchor(s, startPos);
     g_Drawables.InsertLast(s);
     @g_ActiveStroke = s;
 }
 
 void AppendPointToActiveStroke(const vec2 &in pos) {
     if (g_ActiveStroke is null) return;
+    // Convert into the stroke's stored frame so points captured across a moving camera
+    // stay aligned with each other (and with already-stored points from earlier in the drag).
+    vec2 storedPos = ToStoredFrame(g_ActiveStroke, pos);
     if (g_ActiveStroke.Points.Length == 0) {
-        g_ActiveStroke.Points.InsertLast(pos);
+        g_ActiveStroke.Points.InsertLast(storedPos);
         return;
     }
     vec2 lastPoint = g_ActiveStroke.Points[g_ActiveStroke.Points.Length - 1];
-    if (Distance(lastPoint, pos) >= S_MinPointDistance) {
-        g_ActiveStroke.Points.InsertLast(pos);
+    if (Distance(lastPoint, storedPos) >= S_MinPointDistance) {
+        g_ActiveStroke.Points.InsertLast(storedPos);
     }
 }
 
@@ -233,11 +241,54 @@ void DrawAll() {
         Drawable@ d = g_Drawables[i];
         if (d is null) continue;
         float alpha = ComputeAlphaMul(d);
-        if (alpha > 0.0f) d.Draw(drawList, alpha);
+        if (alpha > 0.0f) DrawWithAnchor(d, drawList, alpha);
     }
     if (g_Pending !is null) {
-        g_Pending.Draw(drawList, 1.0f);
+        DrawWithAnchor(g_Pending, drawList, 1.0f);
     }
+}
+
+// Draws a Drawable, applying its world anchor as a rigid screen-space translate. The
+// translate-then-untranslate trick mutates Drawable state for the duration of one Draw
+// call only — safe because input is sampled in HandleDrawingInput *after* DrawAll, so
+// no observer sees the offset state.
+void DrawWithAnchor(Drawable@ d, UI::DrawList@ drawList, float alpha) {
+    if (!d.WorldAnchored) {
+        d.Draw(drawList, alpha);
+        return;
+    }
+    vec2 offset;
+    if (!GetAnchorOffset(d.WorldAnchor, d.ScreenAnchorAtCommit, offset)) {
+        // Anchor is behind the camera or no camera available: skip rather than draw at
+        // a stale position. The mark reappears once the anchor is in front again.
+        return;
+    }
+    if (offset.x == 0.0f && offset.y == 0.0f) {
+        d.Draw(drawList, alpha);
+        return;
+    }
+    d.Translate(offset);
+    d.Draw(drawList, alpha);
+    d.Translate(vec2(-offset.x, -offset.y));
+}
+
+// Current screen-space offset for an anchored drawable, or (0,0) if not anchored / not
+// resolvable. Input handlers subtract this from mousePos so hit-tests and handle drags
+// see the same coords the renderer used.
+vec2 GetDrawableOffset(Drawable@ d) {
+    if (d is null || !d.WorldAnchored) return vec2(0, 0);
+    vec2 off;
+    if (!GetAnchorOffset(d.WorldAnchor, d.ScreenAnchorAtCommit, off)) return vec2(0, 0);
+    return off;
+}
+
+// Converts a current-frame screen position into the drawable's stored coordinate frame.
+// Use when assigning live mouse coords to drawable storage during a drag; the renderer
+// adds the offset back, so the visible point matches the cursor regardless of any
+// camera motion mid-drag. (0,0) offset means storedFrame == screenFrame, so non-anchored
+// callers see no behavior change.
+vec2 ToStoredFrame(Drawable@ d, const vec2 &in screen) {
+    return screen - GetDrawableOffset(d);
 }
 
 float ComputeAlphaMul(Drawable@ d) {
@@ -302,8 +353,9 @@ void DrawCursorPreview() {
         if (g_DraggedHandleIndex < 0 && g_DraggedDrawable is null) {
             Drawable@ hover = null;
             for (int i = int(g_Drawables.Length) - 1; i >= 0; i--) {
-                if (g_Drawables[i].HitTest(mousePos, 6.0f)) {
-                    @hover = g_Drawables[i];
+                Drawable@ candidate = g_Drawables[i];
+                if (candidate.HitTest(mousePos - GetDrawableOffset(candidate), 6.0f)) {
+                    @hover = candidate;
                     break;
                 }
             }
@@ -327,17 +379,22 @@ void DrawCrosshair(UI::DrawList@ drawList, const vec2 &in pos, const vec4 &in co
 void DrawSelectionHandles(UI::DrawList@ drawList, Drawable@ d) {
     array<vec2> handles = d.GetHandles();
     if (handles.Length == 0) return;
+    vec2 off = GetDrawableOffset(d);
     vec4 fill = vec4(1.0f, 1.0f, 1.0f, 0.95f);
     vec4 border = vec4(0.05f, 0.05f, 0.05f, 0.9f);
     for (uint i = 0; i < handles.Length; i++) {
-        drawList.AddCircleFilled(handles[i], 5.0f, fill);
-        drawList.AddCircle(handles[i], 5.5f, border, 0, 1.5f);
+        vec2 p = handles[i] + off;
+        drawList.AddCircleFilled(p, 5.0f, fill);
+        drawList.AddCircle(p, 5.5f, border, 0, 1.5f);
     }
 }
 
 void DrawSelectionHighlight(UI::DrawList@ drawList, Drawable@ d) {
     vec2 boundsMin, boundsMax;
     d.Bounds(boundsMin, boundsMax);
+    vec2 off = GetDrawableOffset(d);
+    boundsMin = boundsMin + off;
+    boundsMax = boundsMax + off;
     float pad = 4.0f;
     vec2 a = vec2(boundsMin.x - pad, boundsMin.y - pad);
     vec2 b = vec2(boundsMax.x + pad, boundsMin.y - pad);
