@@ -141,6 +141,11 @@ vec2 UI::GetMousePos()
 ```
 Get the current position of the mouse relative to the top-left corner of the window.
 
+```
+bool UI::WantCaptureMouse()
+```
+Returns true when ImGui will consume the mouse input — e.g., the cursor is over any ImGui window (this plugin's, another plugin's, or Openplanet's own UI) or an ImGui widget is active. Use this in input gates to suppress canvas/world-side handling so a click on a UI panel doesn't also fire the underlying tool.
+
 ## Text measurement
 
 ```

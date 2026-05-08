@@ -123,27 +123,80 @@ class Drawable {
 class Stroke : Drawable {
     float Thickness;
     bool Dashed;
+    // Highlighter strokes render through a pre-baked union mesh so a self-crossing
+    // translucent path doesn't stack alpha at every crossing. See util/mesh.as.
+    bool Highlighter;
     array<vec2> Points;
+
+    // Cached union mesh for highlighter strokes — list of axis-aligned filled rectangles
+    // whose union exactly covers the swept-disc shape of Points. Built by RebuildMesh on
+    // FinishStroke and on load. While MeshDirty (active drag, fresh deserialize, or
+    // overflowed grid bound) we fall back to per-segment line + vertex-disc rendering.
+    array<vec4> Mesh;
+    bool MeshDirty;
 
     Stroke() {
         super();
         Thickness = 4.0f;
         Dashed = false;
+        Highlighter = false;
+        MeshDirty = true;
     }
 
     void Draw(UI::DrawList@ drawList, float alphaMul) override {
-        if (Points.Length < 2) return;
+        if (Points.Length == 0) return;
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
+
+        // Highlighter fast path: render the cached union mesh as filled quads. Every pixel
+        // inside the swept-disc shape is covered by exactly one rect, so the alpha is
+        // uniform regardless of how many times the path crossed itself.
+        if (Highlighter && !MeshDirty && Mesh.Length > 0) {
+            for (uint i = 0; i < Mesh.Length; i++) {
+                vec4 r = Mesh[i];
+                drawList.AddQuadFilled(
+                    vec2(r.x, r.y),
+                    vec2(r.z, r.y),
+                    vec2(r.z, r.w),
+                    vec2(r.x, r.w),
+                    c);
+            }
+            return;
+        }
+
+        if (Points.Length == 1) {
+            // Single point (mid-drag dot): render as a disc so the stroke is visible.
+            drawList.AddCircleFilled(Points[0], Thickness * 0.5f, c);
+            return;
+        }
+
         if (Dashed) {
             float phase = 0.0f;
             for (uint i = 1; i < Points.Length; i++) {
                 phase = DrawDashedSegment(drawList, Points[i - 1], Points[i], c, Thickness, phase);
             }
-        } else {
-            for (uint i = 1; i < Points.Length; i++) {
-                drawList.AddLine(Points[i - 1], Points[i], c, Thickness);
-            }
+            return;
         }
+
+        // Solid-line fallback for pen strokes and for highlighter strokes that are still
+        // mid-drag (mesh not yet rebuilt). A disc at every vertex closes the triangular
+        // gaps that AddLine's butt caps leave on the outside of every bend.
+        for (uint i = 1; i < Points.Length; i++) {
+            drawList.AddLine(Points[i - 1], Points[i], c, Thickness);
+        }
+        float jr = Thickness * 0.5f;
+        for (uint i = 0; i < Points.Length; i++) {
+            drawList.AddCircleFilled(Points[i], jr, c);
+        }
+    }
+
+    void RebuildMesh() {
+        if (!Highlighter) {
+            Mesh.Resize(0);
+            MeshDirty = false;
+            return;
+        }
+        Mesh = BuildStrokeUnionMesh(Points, Thickness * 0.5f);
+        MeshDirty = false;
     }
 
     bool HitTest(const vec2 &in pos, float radius) override {
@@ -162,6 +215,12 @@ class Stroke : Drawable {
     void Translate(const vec2 &in delta) override {
         for (uint i = 0; i < Points.Length; i++) {
             Points[i] = Points[i] + delta;
+        }
+        // Mesh travels with Points so we don't have to rebuild on every world-anchor frame
+        // translate. World-anchor's per-frame +offset/-offset pair cancels at FP precision,
+        // matching what already happens to Points.
+        for (uint i = 0; i < Mesh.Length; i++) {
+            Mesh[i] = vec4(Mesh[i].x + delta.x, Mesh[i].y + delta.y, Mesh[i].z + delta.x, Mesh[i].w + delta.y);
         }
     }
 
@@ -188,6 +247,7 @@ class Stroke : Drawable {
         obj["type"] = "stroke";
         obj["thickness"] = Thickness;
         obj["dashed"] = Dashed;
+        obj["highlighter"] = Highlighter;
         Json::Value@ pts = Json::Array();
         for (uint i = 0; i < Points.Length; i++) {
             pts.Add(SerializePoint(Points[i]));
@@ -803,11 +863,20 @@ class Polygon : Drawable {
     bool Dashed;
     bool Filled;
 
+    // Cached fill mesh for filled polygons. Same pattern as the highlighter Stroke mesh:
+    // axis-aligned filled rects whose union covers the polygon interior. Replaces per-
+    // triangle ear-clipping fill, where every internal triangulation edge produced a
+    // visible AA-fringe seam. Lazily rebuilt in Draw when FillMeshDirty is set (after
+    // construction, MoveHandle, or load); Translate shifts the cached rects in place.
+    array<vec4> FillMesh;
+    bool FillMeshDirty;
+
     Polygon() {
         super();
         Thickness = 4.0f;
         Dashed = false;
         Filled = false;
+        FillMeshDirty = true;
     }
 
     void DrawEdge(UI::DrawList@ drawList, const vec2 &in a, const vec2 &in b, const vec4 &in c) {
@@ -818,6 +887,11 @@ class Polygon : Drawable {
         }
     }
 
+    void RebuildFillMesh() {
+        FillMesh = BuildPolygonFillMesh(Vertices);
+        FillMeshDirty = false;
+    }
+
     void Draw(UI::DrawList@ drawList, float alphaMul) override {
         if (Vertices.Length == 0) return;
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
@@ -825,12 +899,17 @@ class Polygon : Drawable {
         // and draw a live preview line to the mouse.
         bool building = (g_Pending !is null && g_Pending is this);
 
-        // Self-intersecting polygons fall back to fan triangulation inside TriangulatePolygon.
         if (Filled && !building && Vertices.Length >= 3) {
+            if (FillMeshDirty) RebuildFillMesh();
             vec4 fillColor = vec4(c.x, c.y, c.z, c.w * 0.25f);
-            array<vec2> tris = TriangulatePolygon(Vertices);
-            for (uint i = 0; i + 2 < tris.Length; i += 3) {
-                drawList.AddQuadFilled(tris[i], tris[i + 1], tris[i + 2], fillColor);
+            for (uint i = 0; i < FillMesh.Length; i++) {
+                vec4 r = FillMesh[i];
+                drawList.AddQuadFilled(
+                    vec2(r.x, r.y),
+                    vec2(r.z, r.y),
+                    vec2(r.z, r.w),
+                    vec2(r.x, r.w),
+                    fillColor);
             }
         }
 
@@ -872,6 +951,11 @@ class Polygon : Drawable {
         for (uint i = 0; i < Vertices.Length; i++) {
             Vertices[i] = Vertices[i] + delta;
         }
+        // Mesh travels with Vertices so Select-tool body drags and world-anchor offsets
+        // don't force a full rebuild.
+        for (uint i = 0; i < FillMesh.Length; i++) {
+            FillMesh[i] = vec4(FillMesh[i].x + delta.x, FillMesh[i].y + delta.y, FillMesh[i].z + delta.x, FillMesh[i].w + delta.y);
+        }
     }
 
     void Bounds(vec2 &out boundsMin, vec2 &out boundsMax) override {
@@ -901,6 +985,7 @@ class Polygon : Drawable {
     void MoveHandle(int index, const vec2 &in pos) override {
         if (index < 0 || uint(index) >= Vertices.Length) return;
         Vertices[uint(index)] = pos;
+        FillMeshDirty = true;
     }
 
     bool IsNonDegenerate() override { return Vertices.Length >= 3; }

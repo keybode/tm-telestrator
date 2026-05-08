@@ -72,12 +72,16 @@ Drawable@ DeserializeDrawable(Json::Value@ obj) {
         Stroke@ s = Stroke();
         if (obj.HasKey("thickness")) s.Thickness = float(obj["thickness"]);
         if (obj.HasKey("dashed")) s.Dashed = bool(obj["dashed"]);
+        if (obj.HasKey("highlighter")) s.Highlighter = bool(obj["highlighter"]);
         if (obj.HasKey("points") && obj["points"].GetType() == Json::Type::Array) {
             Json::Value@ pts = obj["points"];
             for (uint i = 0; i < pts.Length; i++) {
                 s.Points.InsertLast(DeserializePoint(pts[i]));
             }
         }
+        // Rebake the union mesh from the loaded points; not serialized to keep state.json
+        // small and to let CELL changes take effect on reload without a migration.
+        s.RebuildMesh();
         @d = s;
     } else if (type == "arrow") {
         Arrow@ a = Arrow();

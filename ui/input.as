@@ -85,6 +85,10 @@ void HandleDrawingInput() {
 }
 
 void CancelInFlight() {
+    // The text-input popup owns g_Pending (the TextLabel being authored) for as long as it's
+    // open; mouse release after the click that opened the popup must not clear it, or the
+    // popup observes g_Pending == null and immediately closes itself.
+    if (g_TextInputOpen) return;
     @g_ActiveStroke = null;
     @g_Pending = null;
     @g_DraggedDrawable = null;
@@ -96,5 +100,9 @@ void CancelInFlight() {
 bool CanDraw() {
     if (!g_DrawingEnabled) return false;
     if (g_BlockDrawingThisFrame) return false;
+    // Block when the cursor is over any ImGui window — Openplanet's own UI, other plugins'
+    // windows, or our own toolbar. Without this, a click on (e.g.) Openplanet's settings
+    // dialog also drops a mark on the canvas underneath.
+    if (UI::WantCaptureMouse()) return false;
     return true;
 }

@@ -149,6 +149,8 @@ void StartStroke(const vec2 &in startPos, bool highlighter) {
         s.Color = vec4(g_CurrentColor.x, g_CurrentColor.y, g_CurrentColor.z, g_CurrentColor.w * 0.35f);
         s.Thickness = Math::Max(S_BrushThickness * 4.0f, 12.0f);
         s.Dashed = false;
+        // Tag for the union-mesh renderer; mesh itself is rebuilt at FinishStroke.
+        s.Highlighter = true;
     } else {
         s.Color = g_CurrentColor;
         s.Thickness = S_BrushThickness;
@@ -177,6 +179,10 @@ void AppendPointToActiveStroke(const vec2 &in pos) {
 
 void FinishStroke() {
     if (g_ActiveStroke !is null) {
+        // Bake the union mesh now (highlighter only — RebuildMesh is a no-op for pen).
+        // Doing it here means the mid-drag fallback render snaps to the clean uniform-alpha
+        // mesh on release, and we don't pay rebuild cost per frame during the drag.
+        g_ActiveStroke.RebuildMesh();
         @g_ActiveStroke = null;
         ClearRedoStack();
         SaveState();

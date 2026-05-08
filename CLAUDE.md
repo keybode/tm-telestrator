@@ -22,6 +22,7 @@ Openplanet loads `.as` files recursively from the plugin folder, so subfolders a
 - [ui/drawables.as](ui/drawables.as) — `Drawable` base class and subclasses (`Stroke`, `Arrow`, `LineSeg`, `RectShape`, `CircleShape`, `EllipseShape`, `TextLabel`, `NumberMarker`) plus `PaletteColor`.
 - [state/persistence.as](state/persistence.as) — `SaveState` / `LoadState` and the JSON (de)serialization helpers.
 - [util/helpers.as](util/helpers.as) — math (`Distance`, `PointToSegmentDistance`, `ConstrainAngle`, `ConstrainSquare`), modifier-key checks (`IsShiftDown`, `IsCtrlDown`), `IsColorLocked`, `IsInMap`, `ColorsEqual` / `ColorsEqualRGB`, and the dashed-line helper.
+- [util/mesh.as](util/mesh.as) — translucent-fill mesh builders. `BuildStrokeUnionMesh` rasterizes a polyline's swept-disc shape; `BuildPolygonFillMesh` rasterizes a simple polygon's interior via horizontal scanline. Both run a `GreedyMeshIntoRects` pass that collapses consecutive marked cells into maximal axis-aligned filled rects. Used by `Stroke.RebuildMesh` (highlighter) and `Polygon.RebuildFillMesh` (filled polygons) to render translucent fills as a union of disjoint rects rather than overlapping triangles, sidestepping the AA-fringe alpha stacking that produces visible seams along every shared edge in ImGui's anti-aliased fill.
 - [util/projection.as](util/projection.as) — world-anchor support: `ComputeWorldAnchor` (screen → world via inverted view-projection through the car's Y plane), `GetAnchorOffset` (per-frame screen translate for an anchored drawable), `TryGetCarY`, `ProjectWorldToScreen`. Depends on the `Camera` and `VehicleState` plugins (declared in [info.toml](info.toml)).
 
 ## API reference
@@ -57,6 +58,20 @@ This is the one piece of state that's easy to misunderstand. It exists to preven
 
 - **Settings.** Variables decorated with `[Setting name="..."]` (e.g. `S_BrushThickness`, `S_Dashed`, `S_CustomColor`) are auto-persisted by Openplanet across sessions and surface in the Openplanet settings dialog. The `[Setting name="..." color]` attribute on a `vec4` renders a color picker. New entries are appended (never reordered), and live in [state/settings.as](state/settings.as).
 - **Drawing state.** `g_CurrentColor`, `g_DrawingEnabled`, `g_CurrentTool`, `g_NextMarkerNumber`, and the entire `g_Drawables` array are persisted manually by `SaveState` / `LoadState` ([state/persistence.as](state/persistence.as)) into `state.json` under `IO::FromStorageFolder(...)`. `SaveState` is called at every committed mutation point (`FinishStroke`, `CommitPending`, eraser release, drag release, `ClearAll`, `UndoLast`, `RedoLast`) and from `OnDestroyed` / `OnDisabled`. New `Drawable` subclasses must add a `"type"` branch to both `Serialize()` and `DeserializeDrawable()`.
+
+### Translucent fills via union meshes
+
+Translucent filled shapes (highlighter strokes, filled polygons) can't render as a series of overlapping primitives without artifacts: ImGui's anti-aliased fill feathers every primitive's outer edge by ~0.5px, and where two filled primitives share an edge each fringe contributes alpha to the boundary pixels and stacks. The result is a darker stripe along every shared edge — visible as patchwork-darker self-crossings on highlighter strokes, and as thin lines along triangulation seams on filled polygons.
+
+Workaround: render each shape as a union of disjoint axis-aligned rects. `Stroke` (highlighter) and `Polygon` (filled) each carry an `array<vec4>` mesh field — list of `(x1, y1, x2, y2)` rects whose union covers the shape. At draw time we paint each rect once with `AddQuadFilled`. Adjacent rects still share edges so AA stacking still happens at those edges, but axis-aligned shared edges at integer-grid positions tend to be visually less prominent than diagonal triangulation edges, and self-crossings within the same shape (the worse case) are eliminated entirely.
+
+Mesh builders live in [util/mesh.as](util/mesh.as): `BuildStrokeUnionMesh` (segment stadiums + endpoint discs rasterized into a 2-pixel grid) and `BuildPolygonFillMesh` (horizontal-scanline rasterization of polygon interior). Both use the shared `GreedyMeshIntoRects` to collapse marked cells into maximal rects.
+
+Lifecycle:
+- **Stroke** rebuilds the mesh on `FinishStroke` (release of the active drag) and on `DeserializeDrawable` load. `MeshDirty` falls back to per-segment `AddLine` + a vertex-disc at every point (also closes `AddLine`'s butt-cap gaps on bends; pen strokes always use this path).
+- **Polygon** rebuilds lazily in `Draw` when `FillMeshDirty` is set. Mutations that invalidate the mesh: construction, `MoveHandle` (handle drag), and load. The mesh isn't serialized — recomputed from `Vertices` on load.
+
+`Translate` shifts both the source vertices and the cached mesh by the same delta so world-anchor offsets and Select-tool body drags don't force a rebuild. The mesh isn't serialized on either type — recomputed from source data on load so a cell-size tweak in [util/mesh.as](util/mesh.as) takes effect on existing saves without a migration.
 
 ### Map guard
 
