@@ -147,20 +147,27 @@ class Stroke : Drawable {
         if (Points.Length == 0) return;
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
 
-        // Highlighter fast path: render the cached union mesh as filled quads. Every pixel
-        // inside the swept-disc shape is covered by exactly one rect, so the alpha is
-        // uniform regardless of how many times the path crossed itself.
-        if (Highlighter && !MeshDirty && Mesh.Length > 0) {
-            for (uint i = 0; i < Mesh.Length; i++) {
-                vec4 r = Mesh[i];
-                drawList.AddQuadFilled(
-                    vec2(r.x, r.y),
-                    vec2(r.z, r.y),
-                    vec2(r.z, r.w),
-                    vec2(r.x, r.w),
-                    c);
+        // Highlighter: render the union mesh as filled quads. Every pixel inside the
+        // swept-disc shape is covered by exactly one rect, so the alpha is uniform
+        // regardless of how many times the path crossed itself. Lazily rebuilt during
+        // active drag (AppendPointToActiveStroke marks dirty per added point) so the
+        // mid-drag preview matches what the user will see after release. If the grid
+        // bound is exceeded `BuildStrokeUnionMesh` returns empty — fall through to the
+        // per-segment fallback below.
+        if (Highlighter) {
+            if (MeshDirty) RebuildMesh();
+            if (Mesh.Length > 0) {
+                for (uint i = 0; i < Mesh.Length; i++) {
+                    vec4 r = Mesh[i];
+                    drawList.AddQuadFilled(
+                        vec2(r.x, r.y),
+                        vec2(r.z, r.y),
+                        vec2(r.z, r.w),
+                        vec2(r.x, r.w),
+                        c);
+                }
+                return;
             }
-            return;
         }
 
         if (Points.Length == 1) {

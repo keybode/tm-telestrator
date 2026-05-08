@@ -169,11 +169,15 @@ void AppendPointToActiveStroke(const vec2 &in pos) {
     vec2 storedPos = g_ActiveStroke.ToStored(pos);
     if (g_ActiveStroke.Points.Length == 0) {
         g_ActiveStroke.Points.InsertLast(storedPos);
+        g_ActiveStroke.MeshDirty = true;
         return;
     }
     vec2 lastPoint = g_ActiveStroke.Points[g_ActiveStroke.Points.Length - 1];
     if (Distance(lastPoint, storedPos) >= S_MinPointDistance) {
         g_ActiveStroke.Points.InsertLast(storedPos);
+        // Mark dirty only when a point is actually inserted so the mesh doesn't rebuild
+        // on every frame the cursor sits idle.
+        g_ActiveStroke.MeshDirty = true;
     }
 }
 
