@@ -19,6 +19,42 @@ void DrawAll() {
     if (g_Pending !is null) {
         DrawWithAnchor(g_Pending, drawList, 1.0f);
     }
+
+    if (g_TextInputOpen && g_Pending !is null) {
+        TextLabel@ t = cast<TextLabel>(g_Pending);
+        if (t !is null) DrawTextLabelOverlay(drawList, t);
+    }
+    if (g_CurrentTool == Tool::Select && g_SelectedDrawable !is null) {
+        TextLabel@ t = cast<TextLabel>(g_SelectedDrawable);
+        if (t !is null) DrawTextLabelOverlay(drawList, t);
+    }
+}
+
+void DrawTextLabelOverlay(UI::DrawList@ drawList, TextLabel@ t) {
+    string sizeLabel = "" + int(t.Size + 0.5f) + "px";
+    float fontSize = 14.0f;
+    vec2 textSize = UI::MeasureString(sizeLabel, null, fontSize);
+
+    float swatch = 12.0f;
+    float pad = 4.0f;
+    float gap = 6.0f;
+    float boxW = pad + swatch + gap + textSize.x + pad;
+    float rowH = Math::Max(swatch, textSize.y);
+    float boxH = pad + rowH + pad;
+
+    vec2 boundsMin, boundsMax;
+    t.BoundsScreen(boundsMin, boundsMax);
+    vec2 boxMin = vec2(boundsMin.x, boundsMin.y - boxH - 4.0f);
+    vec2 boxMax = vec2(boxMin.x + boxW, boxMin.y + boxH);
+
+    DrawFilledRect(drawList, boxMin, boxMax, vec4(0, 0, 0, 0.75f));
+
+    vec2 swMin = vec2(boxMin.x + pad, boxMin.y + pad + (rowH - swatch) * 0.5f);
+    vec2 swMax = vec2(swMin.x + swatch, swMin.y + swatch);
+    DrawFilledRect(drawList, swMin, swMax, vec4(t.Color.x, t.Color.y, t.Color.z, 1.0f));
+
+    vec2 textPos = vec2(boxMin.x + pad + swatch + gap, boxMin.y + pad + (rowH - textSize.y) * 0.5f);
+    drawList.AddText(textPos, vec4(1, 1, 1, 1), sizeLabel, null, fontSize);
 }
 
 // Renders a drawable, applying its world anchor as a rigid screen-space translate. The

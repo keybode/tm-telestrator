@@ -70,6 +70,8 @@ void RenderToolbar() {
         ClearAll();
     }
 
+    RenderSelectionEditor();
+
     UI::Separator();
     UI::Text("Behavior");
     S_AutoOpenOnLoad = UI::Checkbox("Open this window on startup", S_AutoOpenOnLoad);
@@ -95,6 +97,23 @@ void RenderToolbar() {
     UI::Text("- Polygon: click to add vertex, click first vertex (or Enter) to close, Esc to cancel");
     UI::Text("- Curve:   drag to set start+end, then move mouse to bend, click to commit, Esc to cancel");
     UI::End();
+}
+
+// Per-selection edit controls. Saves on UI::IsItemDeactivated (drag release) rather
+// than per-frame so a slider drag doesn't hammer state.json.
+void RenderSelectionEditor() {
+    if (g_SelectedDrawable is null) return;
+
+    TextLabel@ selText = cast<TextLabel>(g_SelectedDrawable);
+    if (selText !is null) {
+        UI::Separator();
+        UI::Text("Selected text");
+        selText.Size = UI::SliderFloat("Size##sel-text", selText.Size, 12.0f, 64.0f);
+        if (UI::IsItemDeactivated()) {
+            ClearRedoStack();
+            SaveState();
+        }
+    }
 }
 
 void RenderToolSelector() {
@@ -180,11 +199,7 @@ void SetTool(Tool t) {
 }
 
 void RenderPalette() {
-    for (uint i = 0; i < g_Palette.Length; i++) {
-        RenderColorSwatch(g_Palette[i].Id, g_Palette[i].Label, g_Palette[i].Color);
-        UI::SameLine();
-    }
-    RenderColorSwatch("custom", "Custom (use the picker below)", S_CustomColor);
+    RenderPaletteRow("", "Custom (use the picker below)", g_CurrentColor, true);
 
     vec4 newCustom = UI::InputColor4("Custom##picker", S_CustomColor);
     // If the user is currently drawing with the custom color, swap g_CurrentColor too so the
@@ -208,18 +223,33 @@ void RenderPalette() {
     S_LockCustom = UI::Checkbox("C##lock", S_LockCustom);
 }
 
-void RenderColorSwatch(const string &in id, const string &in label, const vec4 &in color) {
-    bool isSelected = ColorsEqual(g_CurrentColor, color);
+// Renders the 4 named palette colors plus the custom-color swatch as a single row.
+// `idSuffix` disambiguates ImGui IDs when multiple rows coexist (e.g., main toolbar +
+// text-input popup). `target` is whatever vec4 the click should write to; if
+// `saveOnClick` is true we persist immediately.
+void RenderPaletteRow(const string &in idSuffix, const string &in customLabel, vec4 &inout target, bool saveOnClick) {
+    for (uint i = 0; i < g_Palette.Length; i++) {
+        if (RenderColorSwatch(g_Palette[i].Id + idSuffix, g_Palette[i].Label, g_Palette[i].Color, target) && saveOnClick) {
+            SaveState();
+        }
+        UI::SameLine();
+    }
+    if (RenderColorSwatch("custom" + idSuffix, customLabel, S_CustomColor, target) && saveOnClick) {
+        SaveState();
+    }
+}
+
+// Returns true on click; caller decides whether to persist (main palette saves;
+// text-input popup mutates pending and skips save until commit).
+bool RenderColorSwatch(const string &in id, const string &in label, const vec4 &in color, vec4 &inout target) {
+    bool isSelected = ColorsEqual(target, color);
 
     UI::PushStyleColor(UI::Col::Button, color);
     UI::PushStyleColor(UI::Col::ButtonHovered, color);
     UI::PushStyleColor(UI::Col::ButtonActive, color);
 
     vec2 size = isSelected ? vec2(30, 30) : vec2(24, 24);
-    if (UI::Button("##" + id, size)) {
-        g_CurrentColor = color;
-        SaveState();
-    }
+    bool clicked = UI::Button("##" + id, size);
 
     UI::PopStyleColor(3);
 
@@ -227,6 +257,12 @@ void RenderColorSwatch(const string &in id, const string &in label, const vec4 &
         UI::Text(label);
         UI::EndTooltip();
     }
+
+    if (clicked) {
+        target = color;
+        return true;
+    }
+    return false;
 }
 
 void RenderTextInput() {
@@ -256,6 +292,12 @@ void RenderTextInput() {
         }
         g_TextInputBuffer = UI::InputText("##textinput", g_TextInputBuffer);
 
+        // Initial Size comes from S_TextSize (set when HandleText created the pending
+        // label) so the per-label override doesn't drift the global default.
+        pending.Size = UI::SliderFloat("Size##new-text", pending.Size, 12.0f, 64.0f);
+        RenderPaletteRow("-tx", "Custom", pending.Color, false);
+
+        // InputText absorbs Enter internally, so we re-poll it here to let Enter commit.
         bool commit = UI::IsKeyPressed(UI::Key::Enter);
         bool cancel = UI::IsKeyPressed(UI::Key::Escape);
 

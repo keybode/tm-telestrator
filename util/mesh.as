@@ -241,15 +241,21 @@ void TranslateRectArray(array<vec4> &inout rects, const vec2 &in delta) {
     }
 }
 
+// Filled axis-aligned rectangle from (min, max). Wraps the 4-vec2-corner expansion that
+// AddQuadFilled requires.
+void DrawFilledRect(UI::DrawList@ drawList, const vec2 &in min, const vec2 &in max, const vec4 &in color) {
+    drawList.AddQuadFilled(
+        vec2(min.x, min.y),
+        vec2(max.x, min.y),
+        vec2(max.x, max.y),
+        vec2(min.x, max.y),
+        color);
+}
+
 // Renders a list of (x1, y1, x2, y2) rects as filled quads in `color`.
 void DrawRectMesh(UI::DrawList@ drawList, const array<vec4> &in rects, const vec4 &in color) {
     for (uint i = 0; i < rects.Length; i++) {
         vec4 r = rects[i];
-        drawList.AddQuadFilled(
-            vec2(r.x, r.y),
-            vec2(r.z, r.y),
-            vec2(r.z, r.w),
-            vec2(r.x, r.w),
-            color);
+        DrawFilledRect(drawList, vec2(r.x, r.y), vec2(r.z, r.w), color);
     }
 }

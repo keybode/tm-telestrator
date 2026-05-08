@@ -146,6 +146,11 @@ bool UI::WantCaptureMouse()
 ```
 Returns true when ImGui will consume the mouse input — e.g., the cursor is over any ImGui window (this plugin's, another plugin's, or Openplanet's own UI) or an ImGui widget is active. Use this in input gates to suppress canvas/world-side handling so a click on a UI panel doesn't also fire the underlying tool.
 
+```
+bool UI::IsItemDeactivated()
+```
+Returns true on the single frame the previous widget went from active to inactive (e.g., a slider drag was just released). Use to commit/persist edits that were applied continuously during a drag — call right after the widget. Note: ImGui's `IsItemDeactivatedAfterEdit` (true only when the widget was actually edited) is *not* exposed in the Openplanet binding; track the value-change yourself if you need to distinguish a click-without-drag from a real edit.
+
 ## Text measurement
 
 ```
