@@ -391,6 +391,9 @@ void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool re
                 @g_DraggedDrawable = candidate;
                 g_DragLastPos = mousePos;
                 g_DragMoved = false;
+                // Latch Y-axis mode at press time. Only meaningful for anchored drawables;
+                // requires Alt because raw body drag must still work for screen-space marks.
+                g_DragYAxis = candidate.WorldAnchored && IsAltDown();
                 return;
             }
         }
@@ -404,13 +407,24 @@ void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool re
         } else if (g_DraggedDrawable !is null) {
             vec2 delta = mousePos - g_DragLastPos;
             if (delta.x != 0.0f || delta.y != 0.0f) {
-                // Body drag: pure cursor delta carries through to stored coords. If the
-                // camera also moves between frames mid-drag the drawable will visually
-                // overshoot by Δoffset; in practice users drag while the camera is paused
-                // (replay scrubber), so we don't track a baseline offset.
-                g_DraggedDrawable.Translate(delta);
+                if (g_DragYAxis) {
+                    // Alt+drag on an anchored drawable: vertical cursor motion mutates
+                    // WorldAnchor.y. Camera-aware scaling keeps the felt response constant
+                    // across zoom levels — a far-away mark moves more meters per pixel.
+                    float mpp = WorldYPerScreenPixel(g_DraggedDrawable.WorldAnchor);
+                    if (mpp != 0.0f) {
+                        g_DraggedDrawable.WorldAnchor.y -= delta.y * mpp;
+                        g_DragMoved = true;
+                    }
+                } else {
+                    // Body drag: pure cursor delta carries through to stored coords. If the
+                    // camera also moves between frames mid-drag the drawable will visually
+                    // overshoot by Δoffset; in practice users drag while the camera is paused
+                    // (replay scrubber), so we don't track a baseline offset.
+                    g_DraggedDrawable.Translate(delta);
+                    g_DragMoved = true;
+                }
                 g_DragLastPos = mousePos;
-                g_DragMoved = true;
             }
         }
     } else if (released) {
@@ -421,5 +435,6 @@ void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool re
         @g_DraggedDrawable = null;
         g_DraggedHandleIndex = -1;
         g_DragMoved = false;
+        g_DragYAxis = false;
     }
 }

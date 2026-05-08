@@ -89,3 +89,26 @@ bool GetAnchorOffset(const vec3 &in worldAnchor, const vec2 &in screenAnchorAtCo
     offset = nowScreen - screenAnchorAtCommit;
     return true;
 }
+
+// Camera-aware "world meters per screen pixel of vertical drag" at the given anchor.
+// Used by the Alt+drag mode in HandleSelect to translate cursor motion into world-Y
+// adjustments that feel right at any zoom: a near-camera mark moves slowly per pixel,
+// a far one moves quickly. Returns 0.0f if the conversion can't be derived (camera
+// missing, anchor or probe behind camera, or the projection is degenerate).
+//
+// The sign convention: a positive return value means "screen-down drag = world-down
+// translation" (callers that want screen-up to raise the anchor should subtract
+// screenDeltaY * result from WorldAnchor.y).
+float WorldYPerScreenPixel(const vec3 &in anchor) {
+    if (Camera::GetCurrent() is null) return 0.0f;
+    if (Camera::IsBehind(anchor)) return 0.0f;
+    vec3 probe = vec3(anchor.x, anchor.y + 1.0f, anchor.z);
+    if (Camera::IsBehind(probe)) return 0.0f;
+    vec2 sA = Camera::ToScreenSpace(anchor);
+    vec2 sB = Camera::ToScreenSpace(probe);
+    // World +Y is up; screen +Y is down — moving 1m up should make screen.y smaller,
+    // so (sA.y - sB.y) is the pixels-per-meter ratio (positive in normal cases).
+    float pxPerMeter = sA.y - sB.y;
+    if (Math::Abs(pxPerMeter) < 0.0001f) return 0.0f;
+    return 1.0f / pxPerMeter;
+}

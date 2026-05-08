@@ -2,7 +2,7 @@
 name = "Telestrator"
 author = "Trev_TM"
 category = "Overlay"
-version = "1.7.0"
+version = "1.7.1"
 siteid = 0
 
 [script]

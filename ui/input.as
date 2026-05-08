@@ -90,6 +90,7 @@ void CancelInFlight() {
     @g_DraggedDrawable = null;
     g_DraggedHandleIndex = -1;
     g_DragMoved = false;
+    g_DragYAxis = false;
 }
 
 bool CanDraw() {

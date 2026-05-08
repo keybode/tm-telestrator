@@ -52,8 +52,10 @@ Keys passed to `UI::IsKeyPressed(Key key)` and `UI::IsKeyDown(Key key)`.
 | `UI::Key::Escape` | 526 |
 | `UI::Key::LeftCtrl` | 527 |
 | `UI::Key::LeftShift` | 528 |
+| `UI::Key::LeftAlt` | 529 |
 | `UI::Key::RightCtrl` | 531 |
 | `UI::Key::RightShift` | 532 |
+| `UI::Key::RightAlt` | 533 |
 | `UI::Key::N0` | 536 |
 | `UI::Key::N1` | 537 |
 | `UI::Key::N2` | 538 |

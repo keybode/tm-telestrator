@@ -81,6 +81,11 @@ vec2 g_PendingAnchor;
 Drawable@ g_DraggedDrawable = null;
 vec2 g_DragLastPos;
 bool g_DragMoved = false;
+// True for the duration of a Select-tool body drag launched with Alt held on a
+// world-anchored drawable: vertical cursor motion mutates WorldAnchor.y instead of
+// translating the drawable's stored coords. Latched at press time so toggling Alt
+// mid-drag doesn't switch modes.
+bool g_DragYAxis = false;
 // Persistent selection for the Select tool: survives mouse-up so the user can grab handles
 // across multiple drags. Cleared on tool switch, undo/erase of the selected drawable, ClearAll.
 Drawable@ g_SelectedDrawable = null;

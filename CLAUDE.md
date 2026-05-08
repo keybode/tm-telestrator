@@ -72,6 +72,8 @@ Inverse projection (screen → world at a given Y) is in `ScreenToWorldAtY` ([ut
 
 The anchor fields are persisted via the base `Drawable.Serialize()` (only when `WorldAnchored` is true) and restored after the per-type cast in `DeserializeDrawable`. Subclasses don't need to know about anchoring — it's all on the base class.
 
+**Adjusting altitude after the fact.** With the Select tool, holding Alt while body-dragging an anchored drawable mutates `WorldAnchor.y` instead of translating stored screen coords. The mode is latched in `g_DragYAxis` at press time so toggling Alt mid-drag doesn't switch behavior. The screen-pixel-to-world-meter ratio is camera-aware via `WorldYPerScreenPixel(anchor)` in [util/projection.as](util/projection.as) — it projects the anchor and the anchor +1m and uses the screen-Y delta as the conversion, so the felt response stays constant across replay zoom levels. This is how users fix marks placed on the wrong altitude (ramps, loops) without redrawing.
+
 ## Conventions
 
 - Globals are `g_PascalCase`, settings are `S_PascalCase`, parameters are `camelCase`. Filenames are lowercase (`main.as`, not `Main.as`).

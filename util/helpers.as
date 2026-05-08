@@ -73,6 +73,10 @@ bool IsCtrlDown() {
     return UI::IsKeyDown(UI::Key::LeftCtrl) || UI::IsKeyDown(UI::Key::RightCtrl);
 }
 
+bool IsAltDown() {
+    return UI::IsKeyDown(UI::Key::LeftAlt) || UI::IsKeyDown(UI::Key::RightAlt);
+}
+
 // Snaps the line `origin -> target` to the nearest multiple of `angleStep` radians,
 // preserving the original distance from origin.
 vec2 ConstrainAngle(const vec2 &in origin, const vec2 &in target, float angleStep) {

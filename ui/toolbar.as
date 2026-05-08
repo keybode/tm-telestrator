@@ -90,6 +90,7 @@ void RenderToolbar() {
     UI::Text("Modifiers (hold while drawing)");
     UI::Text("- Shift: arrow/line/measure/bracket/curve snap to 45 degrees; rect/ellipse become square/circle");
     UI::Text("- Ctrl:  rect/ellipse draw from center instead of corner");
+    UI::Text("- Alt + drag (Select tool): adjust a world-anchored mark's altitude");
     UI::Text("Multi-step tools");
     UI::Text("- Polygon: click to add vertex, click first vertex (or Enter) to close, Esc to cancel");
     UI::Text("- Curve:   drag to set start+end, then move mouse to bend, click to commit, Esc to cancel");
@@ -171,6 +172,7 @@ void SetTool(Tool t) {
     @g_DraggedDrawable = null;
     g_DraggedHandleIndex = -1;
     g_DragMoved = false;
+    g_DragYAxis = false;
     // Selection only makes sense for the Select tool — drop it when leaving so other tools
     // don't keep a phantom highlighted drawable around.
     if (t != Tool::Select) @g_SelectedDrawable = null;
