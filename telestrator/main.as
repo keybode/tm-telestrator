@@ -61,12 +61,9 @@ Tool g_CurrentTool = Tool::Pen;
 
 bool g_TextInputOpen = false;
 bool g_TextInputNeedsFocus = false;
-vec2 g_TextInputPos;
 string g_TextInputBuffer;
-// Captured at HandleText press time (when S_WorldAnchor was on and resolved); applied to
-// the TextLabel in CommitTextInput. Plain screen-space mark if the resolve failed.
-bool g_TextInputWorldAnchored = false;
-vec3 g_TextInputWorldAnchor = vec3(0, 0, 0);
+// The in-flight TextLabel itself lives in g_Pending while the popup is open — same slot
+// the press-drag-release shape tools use. Position and world anchor read off of it.
 
 bool g_EraseDirty = false;
 
@@ -84,10 +81,8 @@ vec2 g_PendingAnchor;
 Drawable@ g_DraggedDrawable = null;
 vec2 g_DragLastPos;
 bool g_DragMoved = false;
-// True for the duration of a Select-tool body drag launched with Alt held on a
-// world-anchored drawable: vertical cursor motion mutates WorldAnchor.y instead of
-// translating the drawable's stored coords. Latched at press time so toggling Alt
-// mid-drag doesn't switch modes.
+// Latched at press time on Alt+drag of a world-anchored drawable; toggling Alt mid-drag
+// must not switch modes. Vertical cursor motion mutates WorldAnchor.y instead of translating.
 bool g_DragYAxis = false;
 // Persistent selection for the Select tool: survives mouse-up so the user can grab handles
 // across multiple drags. Cleared on tool switch, undo/erase of the selected drawable, ClearAll.
@@ -97,6 +92,11 @@ int g_DraggedHandleIndex = -1;
 
 bool g_LastMouseDown = false;
 vec4 g_CurrentColor = vec4(1.0f, 0.2f, 0.2f, 1.0f);
+
+// Incremented at the top of every Render(). Used by Drawable.CurrentOffset() as a
+// per-frame cache key — multiple traversals of g_Drawables in the same frame share the
+// projected offset instead of each calling Camera::ToScreenSpace.
+uint64 g_FrameCounter = 0;
 
 array<PaletteColor@> g_Palette = {
     PaletteColor("red",    "Brake",   vec4(1.0f, 0.2f, 0.2f, 1.0f)),
@@ -127,6 +127,7 @@ void RenderMenu() {
 }
 
 void Render() {
+    g_FrameCounter++;
     HandleHotkeys();
     DrawAll();
 
@@ -163,7 +164,7 @@ void AppendPointToActiveStroke(const vec2 &in pos) {
     if (g_ActiveStroke is null) return;
     // Convert into the stroke's stored frame so points captured across a moving camera
     // stay aligned with each other (and with already-stored points from earlier in the drag).
-    vec2 storedPos = ToStoredFrame(g_ActiveStroke, pos);
+    vec2 storedPos = g_ActiveStroke.ToStored(pos);
     if (g_ActiveStroke.Points.Length == 0) {
         g_ActiveStroke.Points.InsertLast(storedPos);
         return;
@@ -189,5 +190,6 @@ void CommitPending(Drawable@ d) {
     SaveState();
 }
 
-// Canvas rendering lives in [canvas.as](canvas.as) — DrawAll, DrawCursorPreview, and
-// the world-anchor offset helpers (GetDrawableOffset, ToStoredFrame).
+// Canvas rendering lives in [canvas.as](canvas.as) — DrawAll, DrawCursorPreview, and the
+// DrawWithAnchor helper. Per-drawable offset application is on the Drawable class itself
+// (CurrentOffset, HitTestScreen, MoveHandleScreen, GetHandlesScreen, BoundsScreen, ToStored).

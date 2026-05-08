@@ -13,9 +13,9 @@ vec2 SnapEndpoint(const vec2 &in start, const vec2 &in mousePos) {
     return mousePos;
 }
 
-// Sets the world anchor on a freshly-created drawable when S_WorldAnchor is on and we can
-// resolve a world point from the press. Called from each tool's "press" branch right after
-// the drawable is constructed; silently no-ops on failure so the mark stays screen-anchored.
+// Sets the world anchor on a freshly-created drawable when S_WorldAnchor is on and a
+// world point under the cursor can be resolved. Silently no-ops on failure so the mark
+// stays screen-anchored.
 void AttachWorldAnchor(Drawable@ d, const vec2 &in pressPos) {
     if (!S_WorldAnchor) return;
     vec3 world;
@@ -23,6 +23,15 @@ void AttachWorldAnchor(Drawable@ d, const vec2 &in pressPos) {
     d.WorldAnchored = true;
     d.WorldAnchor = world;
     d.ScreenAnchorAtCommit = pressPos;
+}
+
+// Standard release flow for press-drag-release shape tools: commit g_Pending if it's
+// past its minimum-extent threshold, otherwise discard. Each shape's threshold lives on
+// the Drawable subclass via IsNonDegenerate.
+void CommitOrCancelPending() {
+    if (g_Pending is null) return;
+    if (g_Pending.IsNonDegenerate()) CommitPending(g_Pending);
+    else @g_Pending = null;
 }
 
 // Resolves a press-drag bounding-box shape (Rect, Ellipse) into its (corner1, corner2) pair,
@@ -71,14 +80,9 @@ void HandleArrow(const vec2 &in mousePos, bool mouseDown, bool pressed, bool rel
         @g_Pending = a;
     } else if (mouseDown && g_Pending !is null) {
         Arrow@ a = cast<Arrow>(g_Pending);
-        if (a !is null) a.End = SnapEndpoint(a.Start, ToStoredFrame(a, mousePos));
-    } else if (released && g_Pending !is null) {
-        Arrow@ a = cast<Arrow>(g_Pending);
-        if (a !is null && Distance(a.Start, a.End) >= 4.0f) {
-            CommitPending(a);
-        } else {
-            @g_Pending = null;
-        }
+        if (a !is null) a.End = SnapEndpoint(a.Start, a.ToStored(mousePos));
+    } else if (released) {
+        CommitOrCancelPending();
     }
 }
 
@@ -95,14 +99,9 @@ void HandleLine(const vec2 &in mousePos, bool mouseDown, bool pressed, bool rele
         @g_Pending = l;
     } else if (mouseDown && g_Pending !is null) {
         LineSeg@ l = cast<LineSeg>(g_Pending);
-        if (l !is null) l.End = SnapEndpoint(l.Start, ToStoredFrame(l, mousePos));
-    } else if (released && g_Pending !is null) {
-        LineSeg@ l = cast<LineSeg>(g_Pending);
-        if (l !is null && Distance(l.Start, l.End) >= 4.0f) {
-            CommitPending(l);
-        } else {
-            @g_Pending = null;
-        }
+        if (l !is null) l.End = SnapEndpoint(l.Start, l.ToStored(mousePos));
+    } else if (released) {
+        CommitOrCancelPending();
     }
 }
 
@@ -118,14 +117,9 @@ void HandleRect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool rele
         @g_Pending = r;
     } else if (mouseDown && g_Pending !is null) {
         RectShape@ r = cast<RectShape>(g_Pending);
-        if (r !is null) ResolveBoxCorners(g_PendingAnchor, ToStoredFrame(r, mousePos), r.Corner1, r.Corner2);
-    } else if (released && g_Pending !is null) {
-        RectShape@ r = cast<RectShape>(g_Pending);
-        if (r !is null && Distance(r.Corner1, r.Corner2) >= 4.0f) {
-            CommitPending(r);
-        } else {
-            @g_Pending = null;
-        }
+        if (r !is null) ResolveBoxCorners(g_PendingAnchor, r.ToStored(mousePos), r.Corner1, r.Corner2);
+    } else if (released) {
+        CommitOrCancelPending();
     }
 }
 
@@ -141,14 +135,9 @@ void HandleCircle(const vec2 &in mousePos, bool mouseDown, bool pressed, bool re
         @g_Pending = ci;
     } else if (mouseDown && g_Pending !is null) {
         CircleShape@ ci = cast<CircleShape>(g_Pending);
-        if (ci !is null) ci.Radius = Distance(ci.Center, ToStoredFrame(ci, mousePos));
-    } else if (released && g_Pending !is null) {
-        CircleShape@ ci = cast<CircleShape>(g_Pending);
-        if (ci !is null && ci.Radius >= 4.0f) {
-            CommitPending(ci);
-        } else {
-            @g_Pending = null;
-        }
+        if (ci !is null) ci.Radius = Distance(ci.Center, ci.ToStored(mousePos));
+    } else if (released) {
+        CommitOrCancelPending();
     }
 }
 
@@ -164,14 +153,9 @@ void HandleEllipse(const vec2 &in mousePos, bool mouseDown, bool pressed, bool r
         @g_Pending = e;
     } else if (mouseDown && g_Pending !is null) {
         EllipseShape@ e = cast<EllipseShape>(g_Pending);
-        if (e !is null) ResolveBoxCorners(g_PendingAnchor, ToStoredFrame(e, mousePos), e.Corner1, e.Corner2);
-    } else if (released && g_Pending !is null) {
-        EllipseShape@ e = cast<EllipseShape>(g_Pending);
-        if (e !is null && Distance(e.Corner1, e.Corner2) >= 4.0f) {
-            CommitPending(e);
-        } else {
-            @g_Pending = null;
-        }
+        if (e !is null) ResolveBoxCorners(g_PendingAnchor, e.ToStored(mousePos), e.Corner1, e.Corner2);
+    } else if (released) {
+        CommitOrCancelPending();
     }
 }
 
@@ -188,14 +172,9 @@ void HandleMeasurement(const vec2 &in mousePos, bool mouseDown, bool pressed, bo
         @g_Pending = m;
     } else if (mouseDown && g_Pending !is null) {
         Measurement@ m = cast<Measurement>(g_Pending);
-        if (m !is null) m.End = SnapEndpoint(m.Start, ToStoredFrame(m, mousePos));
-    } else if (released && g_Pending !is null) {
-        Measurement@ m = cast<Measurement>(g_Pending);
-        if (m !is null && Distance(m.Start, m.End) >= 4.0f) {
-            CommitPending(m);
-        } else {
-            @g_Pending = null;
-        }
+        if (m !is null) m.End = SnapEndpoint(m.Start, m.ToStored(mousePos));
+    } else if (released) {
+        CommitOrCancelPending();
     }
 }
 
@@ -212,14 +191,9 @@ void HandleBracket(const vec2 &in mousePos, bool mouseDown, bool pressed, bool r
         @g_Pending = b;
     } else if (mouseDown && g_Pending !is null) {
         Bracket@ b = cast<Bracket>(g_Pending);
-        if (b !is null) b.End = SnapEndpoint(b.Start, ToStoredFrame(b, mousePos));
-    } else if (released && g_Pending !is null) {
-        Bracket@ b = cast<Bracket>(g_Pending);
-        if (b !is null && Distance(b.Start, b.End) >= 4.0f) {
-            CommitPending(b);
-        } else {
-            @g_Pending = null;
-        }
+        if (b !is null) b.End = SnapEndpoint(b.Start, b.ToStored(mousePos));
+    } else if (released) {
+        CommitOrCancelPending();
     }
 }
 
@@ -231,11 +205,7 @@ void HandlePolygon(const vec2 &in mousePos, bool pressed) {
 
     if (p !is null) {
         if (UI::IsKeyPressed(UI::Key::Enter)) {
-            if (p.Vertices.Length >= 3) {
-                CommitPending(p);
-            } else {
-                @g_Pending = null;
-            }
+            CommitOrCancelPending();
             return;
         }
         if (UI::IsKeyPressed(UI::Key::Escape)) {
@@ -260,7 +230,7 @@ void HandlePolygon(const vec2 &in mousePos, bool pressed) {
     }
 
     // Click near the first vertex closes the polygon (need 3+ vertices for a triangle minimum).
-    vec2 storedMouse = ToStoredFrame(p, mousePos);
+    vec2 storedMouse = p.ToStored(mousePos);
     if (p.Vertices.Length >= 3 && Distance(storedMouse, p.Vertices[0]) <= 8.0f) {
         CommitPending(p);
         return;
@@ -275,7 +245,7 @@ void HandleCurvedArrow(const vec2 &in mousePos, bool mouseDown, bool pressed, bo
     CurvedArrow@ ca = (g_Pending !is null) ? cast<CurvedArrow>(g_Pending) : null;
 
     if (ca !is null && ca.AwaitingBend) {
-        ca.Control = ToStoredFrame(ca, mousePos);
+        ca.Control = ca.ToStored(mousePos);
         if (UI::IsKeyPressed(UI::Key::Escape)) {
             @g_Pending = null;
             return;
@@ -299,10 +269,10 @@ void HandleCurvedArrow(const vec2 &in mousePos, bool mouseDown, bool pressed, bo
         g_PendingAnchor = mousePos;
         @g_Pending = nca;
     } else if (mouseDown && ca !is null) {
-        ca.End = SnapEndpoint(ca.Start, ToStoredFrame(ca, mousePos));
+        ca.End = SnapEndpoint(ca.Start, ca.ToStored(mousePos));
         ca.Control = (ca.Start + ca.End) * 0.5f;
     } else if (released && ca !is null) {
-        if (Distance(ca.Start, ca.End) >= 4.0f) {
+        if (ca.IsNonDegenerate()) {
             ca.AwaitingBend = true;
             ca.Control = (ca.Start + ca.End) * 0.5f;
         } else {
@@ -318,7 +288,7 @@ void HandleEraser(const vec2 &in mousePos, bool mouseDown, bool released) {
         for (int i = int(g_Drawables.Length) - 1; i >= 0; i--) {
             Drawable@ d = g_Drawables[i];
             if (IsColorLocked(d.Color)) continue;
-            if (d.HitTest(mousePos - GetDrawableOffset(d), S_EraserRadius)) {
+            if (d.HitTestScreen(mousePos, S_EraserRadius)) {
                 if (g_SelectedDrawable !is null && d is g_SelectedDrawable) {
                     @g_SelectedDrawable = null;
                     g_DraggedHandleIndex = -1;
@@ -337,20 +307,16 @@ void HandleEraser(const vec2 &in mousePos, bool mouseDown, bool released) {
 
 void HandleText(const vec2 &in mousePos, bool pressed) {
     if (pressed && !g_TextInputOpen) {
-        g_TextInputPos = mousePos;
+        TextLabel@ t = TextLabel();
+        t.Color = g_CurrentColor;
+        t.Position = mousePos;
+        t.Text = "";
+        t.Size = S_TextSize;
+        AttachWorldAnchor(t, mousePos);
+        @g_Pending = t;
         g_TextInputBuffer = "";
         g_TextInputNeedsFocus = true;
         g_TextInputOpen = true;
-        // Capture the world anchor at press time; the TextLabel is constructed later in
-        // CommitTextInput, by which point the camera may have shifted.
-        g_TextInputWorldAnchored = false;
-        if (S_WorldAnchor) {
-            vec3 world;
-            if (ComputeWorldAnchor(mousePos, world)) {
-                g_TextInputWorldAnchor = world;
-                g_TextInputWorldAnchored = true;
-            }
-        }
     }
 }
 
@@ -373,10 +339,9 @@ void HandleMarker(const vec2 &in mousePos, bool pressed) {
 void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool released) {
     if (pressed) {
         if (g_SelectedDrawable !is null) {
-            vec2 selOff = GetDrawableOffset(g_SelectedDrawable);
-            array<vec2> handles = g_SelectedDrawable.GetHandles();
+            array<vec2> handles = g_SelectedDrawable.GetHandlesScreen();
             for (uint i = 0; i < handles.Length; i++) {
-                if (Distance(mousePos, handles[i] + selOff) <= 8.0f) {
+                if (Distance(mousePos, handles[i]) <= 8.0f) {
                     g_DraggedHandleIndex = int(i);
                     g_DragLastPos = mousePos;
                     g_DragMoved = false;
@@ -386,13 +351,12 @@ void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool re
         }
         for (int i = int(g_Drawables.Length) - 1; i >= 0; i--) {
             Drawable@ candidate = g_Drawables[i];
-            if (candidate.HitTest(mousePos - GetDrawableOffset(candidate), 6.0f)) {
+            if (candidate.HitTestScreen(mousePos, 6.0f)) {
                 @g_SelectedDrawable = candidate;
                 @g_DraggedDrawable = candidate;
                 g_DragLastPos = mousePos;
                 g_DragMoved = false;
-                // Latch Y-axis mode at press time. Only meaningful for anchored drawables;
-                // requires Alt because raw body drag must still work for screen-space marks.
+                // Latch Y-axis mode at press time so toggling Alt mid-drag doesn't switch modes.
                 g_DragYAxis = candidate.WorldAnchored && IsAltDown();
                 return;
             }
@@ -400,17 +364,15 @@ void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool re
         @g_SelectedDrawable = null;
     } else if (mouseDown) {
         if (g_DraggedHandleIndex >= 0 && g_SelectedDrawable !is null) {
-            // Stored handle position is in the un-offset frame, so subtract the live offset.
-            g_SelectedDrawable.MoveHandle(g_DraggedHandleIndex, mousePos - GetDrawableOffset(g_SelectedDrawable));
+            g_SelectedDrawable.MoveHandleScreen(g_DraggedHandleIndex, mousePos);
             g_DragLastPos = mousePos;
             g_DragMoved = true;
         } else if (g_DraggedDrawable !is null) {
             vec2 delta = mousePos - g_DragLastPos;
             if (delta.x != 0.0f || delta.y != 0.0f) {
                 if (g_DragYAxis) {
-                    // Alt+drag on an anchored drawable: vertical cursor motion mutates
-                    // WorldAnchor.y. Camera-aware scaling keeps the felt response constant
-                    // across zoom levels — a far-away mark moves more meters per pixel.
+                    // Camera-aware scaling: a far-away mark moves more meters per screen
+                    // pixel than a close one, so the felt response is constant across zooms.
                     float mpp = WorldYPerScreenPixel(g_DraggedDrawable.WorldAnchor);
                     if (mpp != 0.0f) {
                         g_DraggedDrawable.WorldAnchor.y -= delta.y * mpp;

@@ -10,12 +10,20 @@
 class Drawable {
     vec4 Color;
     uint64 CreatedAt;
-    // World-anchor state. When WorldAnchored is true, DrawAll rigidly translates the
+    // World-anchor state. When WorldAnchored is true, the renderer rigidly translates the
     // drawable each frame by (project(WorldAnchor) - ScreenAnchorAtCommit) so the mark
     // tracks the world point captured at press time. See util/projection.as.
     bool WorldAnchored;
     vec3 WorldAnchor;
     vec2 ScreenAnchorAtCommit;
+
+    // Per-frame cache of the projected screen offset. Several traversals (DrawAll, hover,
+    // eraser, select) all need the same value; CurrentOffset() recomputes once per frame
+    // by stamping g_FrameCounter and reusing the cached vec2 across callers. m_OffsetValid
+    // is the "anchor is in front of the camera" flag from the last recompute.
+    uint64 m_OffsetFrame;
+    vec2 m_CachedOffset;
+    bool m_OffsetValid;
 
     Drawable() {
         Color = vec4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -23,8 +31,13 @@ class Drawable {
         WorldAnchored = false;
         WorldAnchor = vec3(0, 0, 0);
         ScreenAnchorAtCommit = vec2(0, 0);
+        m_OffsetFrame = 0;
+        m_CachedOffset = vec2(0, 0);
+        m_OffsetValid = true;
     }
 
+    // Stored-frame primitives: subclasses implement these. Callers outside this class should
+    // prefer the *Screen variants below, which transparently apply the world-anchor offset.
     void Draw(UI::DrawList@ drawList, float alphaMul) {}
     bool HitTest(const vec2 &in pos, float radius) { return false; }
     void Translate(const vec2 &in delta) {}
@@ -39,6 +52,61 @@ class Drawable {
     // moved via the body drag in HandleSelect, just not reshaped.
     array<vec2> GetHandles() { return array<vec2>(); }
     void MoveHandle(int index, const vec2 &in pos) {}
+
+    // Smallest-extent test for press-drag-release tools. Default false (one-shot inserts
+    // like Marker / Text always commit); shape subclasses override to enforce a minimum
+    // drag distance so a stray click doesn't leave a zero-length mark behind.
+    bool IsNonDegenerate() { return true; }
+
+    // Returns the current screen-space offset to apply when rendering or interacting. Cached
+    // for the duration of one frame via g_FrameCounter so multiple per-frame loops over
+    // g_Drawables don't each repeat the camera projection.
+    vec2 CurrentOffset() {
+        if (!WorldAnchored) return vec2(0, 0);
+        if (m_OffsetFrame != g_FrameCounter) {
+            m_OffsetFrame = g_FrameCounter;
+            m_OffsetValid = GetAnchorOffset(WorldAnchor, ScreenAnchorAtCommit, m_CachedOffset);
+        }
+        return m_OffsetValid ? m_CachedOffset : vec2(0, 0);
+    }
+
+    // True if the anchor projects in front of the camera right now. DrawAll uses this to
+    // skip rendering when the anchor is behind the camera (would otherwise paint at a
+    // stale screen position).
+    bool IsAnchorVisible() {
+        if (!WorldAnchored) return true;
+        // Force the cache to refresh if it's stale before reading m_OffsetValid.
+        CurrentOffset();
+        return m_OffsetValid;
+    }
+
+    // Screen-frame wrappers. Callers pass current-frame mouse coords; these adjust into the
+    // stored frame internally so adding a new caller can't forget the offset.
+    bool HitTestScreen(const vec2 &in screenPos, float radius) {
+        return HitTest(screenPos - CurrentOffset(), radius);
+    }
+    void MoveHandleScreen(int index, const vec2 &in screenPos) {
+        MoveHandle(index, screenPos - CurrentOffset());
+    }
+    array<vec2> GetHandlesScreen() {
+        array<vec2> h = GetHandles();
+        vec2 off = CurrentOffset();
+        if (off.x == 0.0f && off.y == 0.0f) return h;
+        for (uint i = 0; i < h.Length; i++) h[i] = h[i] + off;
+        return h;
+    }
+    void BoundsScreen(vec2 &out boundsMin, vec2 &out boundsMax) {
+        Bounds(boundsMin, boundsMax);
+        vec2 off = CurrentOffset();
+        boundsMin = boundsMin + off;
+        boundsMax = boundsMax + off;
+    }
+
+    // Converts a screen-frame position into the drawable's stored frame. Used during drag
+    // mutations so points captured across a moving camera stay aligned with each other.
+    vec2 ToStored(const vec2 &in screenPos) {
+        return screenPos - CurrentOffset();
+    }
 
     Json::Value@ Serialize() {
         Json::Value@ obj = Json::Object();
@@ -113,6 +181,8 @@ class Stroke : Drawable {
         }
     }
 
+    bool IsNonDegenerate() override { return Points.Length >= 2; }
+
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
         obj["type"] = "stroke";
@@ -183,6 +253,8 @@ class Arrow : Drawable {
         else if (index == 1) End = pos;
     }
 
+    bool IsNonDegenerate() override { return Distance(Start, End) >= 4.0f; }
+
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
         obj["type"] = "arrow";
@@ -240,6 +312,8 @@ class LineSeg : Drawable {
         if (index == 0) Start = pos;
         else if (index == 1) End = pos;
     }
+
+    bool IsNonDegenerate() override { return Distance(Start, End) >= 4.0f; }
 
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
@@ -319,6 +393,8 @@ class RectShape : Drawable {
         else if (index == 3) { Corner1.x = pos.x; Corner2.y = pos.y; }
     }
 
+    bool IsNonDegenerate() override { return Distance(Corner1, Corner2) >= 4.0f; }
+
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
         obj["type"] = "rect";
@@ -374,6 +450,8 @@ class CircleShape : Drawable {
     void MoveHandle(int index, const vec2 &in pos) override {
         Radius = Distance(Center, pos);
     }
+
+    bool IsNonDegenerate() override { return Radius >= 4.0f; }
 
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
@@ -465,6 +543,8 @@ class EllipseShape : Drawable {
         else if (index == 2) Corner2 = pos;
         else if (index == 3) { Corner1.x = pos.x; Corner2.y = pos.y; }
     }
+
+    bool IsNonDegenerate() override { return Distance(Corner1, Corner2) >= 4.0f; }
 
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
@@ -635,6 +715,8 @@ class Measurement : Drawable {
         else if (index == 1) End = pos;
     }
 
+    bool IsNonDegenerate() override { return Distance(Start, End) >= 4.0f; }
+
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
         obj["type"] = "measurement";
@@ -701,6 +783,8 @@ class Bracket : Drawable {
         if (index == 0) Start = pos;
         else if (index == 1) End = pos;
     }
+
+    bool IsNonDegenerate() override { return Distance(Start, End) >= 4.0f; }
 
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
@@ -819,6 +903,8 @@ class Polygon : Drawable {
         Vertices[uint(index)] = pos;
     }
 
+    bool IsNonDegenerate() override { return Vertices.Length >= 3; }
+
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();
         obj["type"] = "polygon";
@@ -925,6 +1011,8 @@ class CurvedArrow : Drawable {
         else if (index == 1) End = pos;
         else if (index == 2) Control = pos;
     }
+
+    bool IsNonDegenerate() override { return Distance(Start, End) >= 4.0f; }
 
     Json::Value@ Serialize() override {
         Json::Value@ obj = Drawable::Serialize();

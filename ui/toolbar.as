@@ -231,10 +231,16 @@ void RenderColorSwatch(const string &in id, const string &in label, const vec4 &
 
 void RenderTextInput() {
     if (!g_TextInputOpen) return;
+    TextLabel@ pending = cast<TextLabel>(g_Pending);
+    if (pending is null) {
+        // Safety: popup is open but the pending label vanished (tool switch, etc.).
+        CloseTextInput();
+        return;
+    }
 
     g_BlockDrawingThisFrame = true;
 
-    UI::SetNextWindowPos(int(g_TextInputPos.x), int(g_TextInputPos.y), UI::Cond::Appearing);
+    UI::SetNextWindowPos(int(pending.Position.x), int(pending.Position.y), UI::Cond::Appearing);
 
     int flags =
         UI::WindowFlags::AlwaysAutoResize
@@ -277,20 +283,12 @@ void RenderTextInput() {
 }
 
 void CommitTextInput() {
-    if (g_TextInputBuffer.Length > 0) {
-        TextLabel@ t = TextLabel();
-        t.Color = g_CurrentColor;
-        t.Position = g_TextInputPos;
+    TextLabel@ t = cast<TextLabel>(g_Pending);
+    if (t !is null && g_TextInputBuffer.Length > 0) {
         t.Text = g_TextInputBuffer;
-        t.Size = S_TextSize;
-        if (g_TextInputWorldAnchored) {
-            t.WorldAnchored = true;
-            t.WorldAnchor = g_TextInputWorldAnchor;
-            t.ScreenAnchorAtCommit = g_TextInputPos;
-        }
-        g_Drawables.InsertLast(t);
-        ClearRedoStack();
-        SaveState();
+        CommitPending(t);
+    } else {
+        @g_Pending = null;
     }
     CloseTextInput();
 }
@@ -299,6 +297,9 @@ void CloseTextInput() {
     g_TextInputOpen = false;
     g_TextInputNeedsFocus = false;
     g_TextInputBuffer = "";
-    // Text is one-shot: revert to Pen so a stray click doesn't reopen the popup.
-    g_CurrentTool = Tool::Pen;
+    // If the popup is closing without a successful commit, drop the pending TextLabel too.
+    if (cast<TextLabel>(g_Pending) !is null) @g_Pending = null;
+    // Text is one-shot: revert to Pen, but only if the user is still on Text — they may
+    // have switched tools while the popup was open, and we shouldn't override that.
+    if (g_CurrentTool == Tool::Text) g_CurrentTool = Tool::Pen;
 }

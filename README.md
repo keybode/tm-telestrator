@@ -8,6 +8,7 @@ Screen-drawing overlay [Openplanet](https://openplanet.dev) plugin for Trackmani
 - **Solid or dashed** variants on every line-based tool
 - **4 labelled palette colors** (Brake / Accel / Drift / Release) plus a custom color picker
 - **Edit committed drawings** — pick the Select tool, click a mark, then drag corner / endpoint / vertex handles to reshape it (or drag the body to move)
+- **World-anchored marks (optional)** — toggle "World-anchor new marks" so fresh drawings stick to a point on the track instead of the screen, sliding with the camera as you scrub a replay
 - **Per-color eraser locks** so e.g. brake-zone marks survive a `Clear`
 - **Optional auto-fade** — old marks decay over a configurable window
 - **Undo / redo / clear** with rebindable hotkeys
@@ -28,6 +29,7 @@ All hotkeys are configurable in Openplanet's settings dialog and can be individu
 
 - **Shift** — constrain to 45° (line / arrow / measurement / bracket / curved arrow) or perfect square (rect / ellipse)
 - **Ctrl** — draw from center (rect / ellipse)
+- **Alt + drag (Select tool)** — adjust a world-anchored mark's altitude, useful for fixing marks placed on ramps or loops
 - **Enter / Escape** — close / cancel a polygon mid-build
 
 ## Install
