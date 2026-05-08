@@ -227,7 +227,7 @@ void RenderPalette() {
 // `idSuffix` disambiguates ImGui IDs when multiple rows coexist (e.g., main toolbar +
 // text-input popup). `target` is whatever vec4 the click should write to; if
 // `saveOnClick` is true we persist immediately.
-void RenderPaletteRow(const string &in idSuffix, const string &in customLabel, vec4 &inout target, bool saveOnClick) {
+void RenderPaletteRow(const string &in idSuffix, const string &in customLabel, vec4 &out target, bool saveOnClick) {
     for (uint i = 0; i < g_Palette.Length; i++) {
         if (RenderColorSwatch(g_Palette[i].Id + idSuffix, g_Palette[i].Label, g_Palette[i].Color, target) && saveOnClick) {
             SaveState();
@@ -241,7 +241,7 @@ void RenderPaletteRow(const string &in idSuffix, const string &in customLabel, v
 
 // Returns true on click; caller decides whether to persist (main palette saves;
 // text-input popup mutates pending and skips save until commit).
-bool RenderColorSwatch(const string &in id, const string &in label, const vec4 &in color, vec4 &inout target) {
+bool RenderColorSwatch(const string &in id, const string &in label, const vec4 &in color, vec4 &out target) {
     bool isSelected = ColorsEqual(target, color);
 
     UI::PushStyleColor(UI::Col::Button, color);
