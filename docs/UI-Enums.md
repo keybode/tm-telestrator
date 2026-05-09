@@ -48,6 +48,7 @@ Keys passed to `UI::IsKeyPressed(Key key)` and `UI::IsKeyDown(Key key)`.
 
 | Member | Value |
 | --- | --- |
+| `UI::Key::Delete` | 522 |
 | `UI::Key::Enter` | 525 |
 | `UI::Key::Escape` | 526 |
 | `UI::Key::LeftCtrl` | 527 |

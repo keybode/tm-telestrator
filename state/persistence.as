@@ -48,7 +48,12 @@ void LoadState() {
         Json::Value@ arr = root["drawables"];
         for (uint i = 0; i < arr.Length; i++) {
             Drawable@ d = DeserializeDrawable(arr[i]);
-            if (d !is null) g_Drawables.InsertLast(d);
+            if (d !is null) {
+                g_Drawables.InsertLast(d);
+                // Seed the undo stack so loaded drawables can be peeled off via UndoLast,
+                // matching the pre-op-stack behavior. Redo stack stays empty (not persisted).
+                g_UndoStack.InsertLast(HistoryOp(HOP_Create, d, -1));
+            }
         }
     }
 

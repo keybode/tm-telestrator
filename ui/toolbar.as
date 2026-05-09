@@ -93,6 +93,7 @@ void RenderToolbar() {
     UI::Text("- Shift: arrow/line/measure/bracket/curve snap to 45 degrees; rect/ellipse become square/circle");
     UI::Text("- Ctrl:  rect/ellipse draw from center instead of corner");
     UI::Text("- Alt + drag (Select tool): adjust a world-anchored mark's altitude");
+    UI::Text("- Delete (Select tool): remove the selected mark");
     UI::Text("Multi-step tools");
     UI::Text("- Polygon: click to add vertex, click first vertex (or Enter) to close, Esc to cancel");
     UI::Text("- Curve:   drag to set start+end, then move mouse to bend, click to commit, Esc to cancel");

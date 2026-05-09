@@ -31,6 +31,7 @@ All hotkeys are configurable in Openplanet's settings dialog and can be individu
 - **Shift** — constrain to 45° (line / arrow / measurement / bracket / curved arrow) or perfect square (rect / ellipse)
 - **Ctrl** — draw from center (rect / ellipse)
 - **Alt + drag (Select tool)** — adjust a world-anchored mark's altitude, useful for fixing marks placed on ramps or loops
+- **Delete (Select tool)** — remove the selected mark
 - **Enter / Escape** — close / cancel a polygon mid-build
 
 ## Install

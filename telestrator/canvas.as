@@ -102,6 +102,7 @@ void PruneFaded() {
         float age = float(Time::Now - d.CreatedAt) / 1000.0f;
         if (age >= total) {
             g_Drawables.RemoveAt(uint(i));
+            ForgetHistoryFor(d);
         }
     }
 }

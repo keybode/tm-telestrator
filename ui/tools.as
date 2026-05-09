@@ -294,6 +294,7 @@ void HandleEraser(const vec2 &in mousePos, bool mouseDown, bool released) {
                     g_DraggedHandleIndex = -1;
                 }
                 g_Drawables.RemoveAt(uint(i));
+                ForgetHistoryFor(d);
                 g_EraseDirty = true;
                 break;
             }
@@ -329,6 +330,7 @@ void HandleMarker(const vec2 &in mousePos, bool pressed) {
     m.Size = Math::Max(S_TextSize * 1.5f, 24.0f);
     AttachWorldAnchor(m, mousePos);
     g_Drawables.InsertLast(m);
+    g_UndoStack.InsertLast(HistoryOp(HOP_Create, m, -1));
     ClearRedoStack();
     SaveState();
 }

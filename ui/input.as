@@ -16,6 +16,11 @@ void HandleHotkeys() {
     if (S_HotkeyClear && UI::IsKeyPressed(HotkeyKeyToUIKey(S_HotkeyClearKey))) {
         ClearAll();
     }
+    // Delete: remove the selected drawable. Hardcoded rather than rebindable — it's a
+    // standard convention and a no-op without a selection, so it can't fire spuriously.
+    if (g_SelectedDrawable !is null && UI::IsKeyPressed(UI::Key::Delete)) {
+        DeleteSelected();
+    }
 }
 
 void HandleDrawingInput() {

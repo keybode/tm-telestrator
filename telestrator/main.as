@@ -21,7 +21,7 @@
     Source layout (Openplanet loads .as files recursively, so the folders are purely organizational):
     - telestrator/main.as ....... runtime: globals, OP callbacks, stroke lifecycle
     - telestrator/canvas.as ..... per-frame DrawAll / DrawCursorPreview + world-anchor offset helpers
-    - telestrator/history.as .... UndoLast / RedoLast / ClearRedoStack / ClearAll
+    - telestrator/history.as .... UndoLast / RedoLast / ClearRedoStack / ClearAll / DeleteSelected / ForgetHistoryFor
     - state/settings.as ......... [Setting]-decorated variables auto-persisted by Openplanet
     - state/persistence.as ...... SaveState / LoadState / (de)serialization helpers
     - ui/toolbar.as ............. toolbar window, tool selector, palette, floating text-input popup
@@ -72,7 +72,33 @@ int g_NextMarkerNumber = 1;
 // Global state
 
 array<Drawable@> g_Drawables;
-array<Drawable@> g_Redo;
+
+// One step in the undo/redo history. Kind=Create means Target was added at the end of
+// g_Drawables (undo: remove it). Kind=Delete means Target was removed from Index in
+// g_Drawables (undo: re-insert at Index). Eraser and PruneFaded skip the stack and call
+// ForgetHistoryFor instead, which scrubs any matching ops — those removals stay
+// permanent (matches existing behavior; not changing eraser semantics here).
+enum HistoryOpKind {
+    HOP_Create,
+    HOP_Delete
+}
+
+class HistoryOp {
+    HistoryOpKind Kind;
+    Drawable@ Target;
+    int Index;
+
+    HistoryOp() {}
+    HistoryOp(HistoryOpKind k, Drawable@ d, int i) {
+        Kind = k;
+        @Target = d;
+        Index = i;
+    }
+}
+
+array<HistoryOp@> g_UndoStack;
+array<HistoryOp@> g_RedoStack;
+
 Stroke@ g_ActiveStroke = null;
 Drawable@ g_Pending = null;
 // Original press position for the active shape drag — needed because Ctrl-from-center mutates
@@ -158,6 +184,7 @@ void StartStroke(const vec2 &in startPos, bool highlighter) {
     s.Points.InsertLast(startPos);
     AttachWorldAnchor(s, startPos);
     g_Drawables.InsertLast(s);
+    g_UndoStack.InsertLast(HistoryOp(HOP_Create, s, -1));
     @g_ActiveStroke = s;
 }
 
@@ -193,6 +220,7 @@ void FinishStroke() {
 
 void CommitPending(Drawable@ d) {
     g_Drawables.InsertLast(d);
+    g_UndoStack.InsertLast(HistoryOp(HOP_Create, d, -1));
     @g_Pending = null;
     ClearRedoStack();
     SaveState();
