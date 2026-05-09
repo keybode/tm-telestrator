@@ -199,7 +199,11 @@ void SetTool(Tool t) {
 }
 
 void RenderPalette() {
-    RenderPaletteRow("", "Custom (use the picker below)", g_CurrentColor, true);
+    int picked = RenderPaletteRow("", "Custom (use the picker below)", g_CurrentColor);
+    if (picked >= 0) {
+        g_CurrentColor = (picked < int(g_Palette.Length)) ? g_Palette[picked].Color : S_CustomColor;
+        SaveState();
+    }
 
     vec4 newCustom = UI::InputColor4("Custom##picker", S_CustomColor);
     // If the user is currently drawing with the custom color, swap g_CurrentColor too so the
@@ -225,24 +229,29 @@ void RenderPalette() {
 
 // Renders the 4 named palette colors plus the custom-color swatch as a single row.
 // `idSuffix` disambiguates ImGui IDs when multiple rows coexist (e.g., main toolbar +
-// text-input popup). `target` is whatever vec4 the click should write to; if
-// `saveOnClick` is true we persist immediately.
-void RenderPaletteRow(const string &in idSuffix, const string &in customLabel, vec4 &out target, bool saveOnClick) {
+// text-input popup). `current` is the color shown as selected (drawn larger).
+// Returns the picked index, or -1 if no click. Indices 0..g_Palette.Length-1 map to
+// palette entries; g_Palette.Length means the custom swatch was clicked. The caller
+// resolves the chosen color and decides whether to persist — vec4 is a value type so
+// AngelScript won't let us pass it as &inout or &out.
+int RenderPaletteRow(const string &in idSuffix, const string &in customLabel, const vec4 &in current) {
+    int picked = -1;
     for (uint i = 0; i < g_Palette.Length; i++) {
-        if (RenderColorSwatch(g_Palette[i].Id + idSuffix, g_Palette[i].Label, g_Palette[i].Color, target) && saveOnClick) {
-            SaveState();
+        if (RenderColorSwatch(g_Palette[i].Id + idSuffix, g_Palette[i].Label, g_Palette[i].Color, current)) {
+            picked = int(i);
         }
         UI::SameLine();
     }
-    if (RenderColorSwatch("custom" + idSuffix, customLabel, S_CustomColor, target) && saveOnClick) {
-        SaveState();
+    if (RenderColorSwatch("custom" + idSuffix, customLabel, S_CustomColor, current)) {
+        picked = int(g_Palette.Length);
     }
+    return picked;
 }
 
-// Returns true on click; caller decides whether to persist (main palette saves;
-// text-input popup mutates pending and skips save until commit).
-bool RenderColorSwatch(const string &in id, const string &in label, const vec4 &in color, vec4 &out target) {
-    bool isSelected = ColorsEqual(target, color);
+// Returns true on click. The caller diffs `current` against `color` to decide
+// whether to apply the change (and whether to persist).
+bool RenderColorSwatch(const string &in id, const string &in label, const vec4 &in color, const vec4 &in current) {
+    bool isSelected = ColorsEqual(current, color);
 
     UI::PushStyleColor(UI::Col::Button, color);
     UI::PushStyleColor(UI::Col::ButtonHovered, color);
@@ -258,11 +267,7 @@ bool RenderColorSwatch(const string &in id, const string &in label, const vec4 &
         UI::EndTooltip();
     }
 
-    if (clicked) {
-        target = color;
-        return true;
-    }
-    return false;
+    return clicked;
 }
 
 void RenderTextInput() {
@@ -295,7 +300,10 @@ void RenderTextInput() {
         // Initial Size comes from S_TextSize (set when HandleText created the pending
         // label) so the per-label override doesn't drift the global default.
         pending.Size = UI::SliderFloat("Size##new-text", pending.Size, 12.0f, 64.0f);
-        RenderPaletteRow("-tx", "Custom", pending.Color, false);
+        int pickedTx = RenderPaletteRow("-tx", "Custom", pending.Color);
+        if (pickedTx >= 0) {
+            pending.Color = (pickedTx < int(g_Palette.Length)) ? g_Palette[pickedTx].Color : S_CustomColor;
+        }
 
         // InputText absorbs Enter internally, so we re-poll it here to let Enter commit.
         bool commit = UI::IsKeyPressed(UI::Key::Enter);
