@@ -17,6 +17,8 @@ vec2 SnapEndpoint(const vec2 &in start, const vec2 &in mousePos) {
 // world point under the cursor can be resolved. Silently no-ops on failure so the mark
 // stays screen-anchored.
 void AttachWorldAnchor(Drawable@ d, const vec2 &in pressPos) {
+    // Feature disabled for shipping — see g_WorldAnchorFeatureEnabled in telestrator/main.as.
+    if (!g_WorldAnchorFeatureEnabled) return;
     if (!S_WorldAnchor) return;
     vec3 world;
     if (!ComputeWorldAnchor(pressPos, world)) return;

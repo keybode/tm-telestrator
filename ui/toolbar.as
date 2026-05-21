@@ -45,11 +45,15 @@ void RenderToolbar() {
     S_AutoFadeSeconds = UI::SliderFloat("Auto-fade (s)", S_AutoFadeSeconds, 0.0f, 60.0f);
     S_Dashed = UI::Checkbox("Dashed lines", S_Dashed);
     S_PolygonFill = UI::Checkbox("Polygon fill (translucent)", S_PolygonFill);
-    S_WorldAnchor = UI::Checkbox("World-anchor new marks", S_WorldAnchor);
-    if (UI::BeginItemTooltip()) {
-        UI::Text("New marks stick to the world point under the cursor (at car altitude)");
-        UI::Text("instead of staying glued to the screen. Existing marks are unchanged.");
-        UI::EndTooltip();
+    // World-anchor checkbox hidden while the feature is disabled for shipping
+    // (see g_WorldAnchorFeatureEnabled in telestrator/main.as).
+    if (g_WorldAnchorFeatureEnabled) {
+        S_WorldAnchor = UI::Checkbox("World-anchor new marks", S_WorldAnchor);
+        if (UI::BeginItemTooltip()) {
+            UI::Text("New marks stick to the world point under the cursor (at car altitude)");
+            UI::Text("instead of staying glued to the screen. Existing marks are unchanged.");
+            UI::EndTooltip();
+        }
     }
 
     UI::Separator();
@@ -92,7 +96,9 @@ void RenderToolbar() {
     UI::Text("Modifiers (hold while drawing)");
     UI::Text("- Shift: arrow/line/measure/bracket/curve snap to 45 degrees; rect/ellipse become square/circle");
     UI::Text("- Ctrl:  rect/ellipse draw from center instead of corner");
-    UI::Text("- Alt + drag (Select tool): adjust a world-anchored mark's altitude");
+    if (g_WorldAnchorFeatureEnabled) {
+        UI::Text("- Alt + drag (Select tool): adjust a world-anchored mark's altitude");
+    }
     UI::Text("- Delete (Select tool): remove the selected mark");
     UI::Text("Multi-step tools");
     UI::Text("- Polygon: click to add vertex, click first vertex (or Enter) to close, Esc to cancel");

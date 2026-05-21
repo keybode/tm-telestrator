@@ -171,7 +171,10 @@ Drawable@ DeserializeDrawable(Json::Value@ obj) {
     if (d !is null && obj.HasKey("color")) {
         d.Color = DeserializeColor(obj["color"]);
     }
-    if (d !is null && obj.HasKey("worldAnchored") && bool(obj["worldAnchored"])) {
+    // World-anchor restore is gated on the feature flag (see telestrator/main.as). When the
+    // feature is disabled for shipping, persisted anchors from older saves stay dormant — the
+    // drawable loads with WorldAnchored=false and renders at its stored screen position.
+    if (g_WorldAnchorFeatureEnabled && d !is null && obj.HasKey("worldAnchored") && bool(obj["worldAnchored"])) {
         d.WorldAnchored = true;
         if (obj.HasKey("worldAnchor")) d.WorldAnchor = DeserializeVec3(obj["worldAnchor"]);
         if (obj.HasKey("screenAnchor")) d.ScreenAnchorAtCommit = DeserializePoint(obj["screenAnchor"]);

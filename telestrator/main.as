@@ -54,6 +54,20 @@ enum Tool {
     CurvedArrow
 }
 
+// Feature kill-switch for the world-anchor system. Disabled for shipping.
+//
+// All world-anchor implementation code (util/projection.as, the WorldAnchored/WorldAnchor/
+// ScreenAnchorAtCommit fields and *Screen helpers on Drawable, DrawWithAnchor, the Alt-drag
+// Y-axis mode in HandleSelect, etc.) is left in place. This flag gates the three entry
+// points that can turn the feature on: (1) AttachWorldAnchor in ui/tools.as, called at
+// tool-press time on each fresh drawable; (2) the worldAnchored restore branch in
+// DeserializeDrawable so persisted anchors from older saves don't reactivate the feature;
+// (3) the UI checkbox + Alt+drag help text in RenderToolbar. With all three gated off, no
+// drawable ever has WorldAnchored=true, so every downstream conditional (CurrentOffset,
+// DrawWithAnchor, IsAnchorVisible, the g_DragYAxis latch in HandleSelect) naturally takes
+// the inactive branch. Flip to true to re-enable.
+const bool g_WorldAnchorFeatureEnabled = false;
+
 bool g_WindowVisible = false;
 bool g_DrawingEnabled = false;
 bool g_BlockDrawingThisFrame = false;
