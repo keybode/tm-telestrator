@@ -1,11 +1,4 @@
-// Per-tool input handlers.
-//
-// Each tool follows a press-drag-release contract driven by HandleDrawingInput in ui/input.as:
-// streaming tools (Pen, Highlighter) mutate g_ActiveStroke; bounding-shape tools (Arrow, Line,
-// Rect, Circle, Ellipse) mutate g_Pending and only commit on release if non-degenerate;
-// one-shot tools (Text, Marker) insert directly on press; Eraser and Select have their own flows.
 
-// Endpoint snap for two-point shapes (Arrow, Line). Shift = 45-degree increments.
 vec2 SnapEndpoint(const vec2 &in start, const vec2 &in mousePos) {
     if (IsShiftDown()) {
         return ConstrainAngle(start, mousePos, Math::PI * 0.25f);
@@ -13,11 +6,7 @@ vec2 SnapEndpoint(const vec2 &in start, const vec2 &in mousePos) {
     return mousePos;
 }
 
-// Sets the world anchor on a freshly-created drawable when S_WorldAnchor is on and a
-// world point under the cursor can be resolved. Silently no-ops on failure so the mark
-// stays screen-anchored.
 void AttachWorldAnchor(Drawable@ d, const vec2 &in pressPos) {
-    // Feature disabled for shipping — see g_WorldAnchorFeatureEnabled in telestrator/main.as.
     if (!g_WorldAnchorFeatureEnabled) return;
     if (!S_WorldAnchor) return;
     vec3 world;
@@ -27,17 +16,12 @@ void AttachWorldAnchor(Drawable@ d, const vec2 &in pressPos) {
     d.ScreenAnchorAtCommit = pressPos;
 }
 
-// Standard release flow for press-drag-release shape tools: commit g_Pending if it's
-// past its minimum-extent threshold, otherwise discard. Each shape's threshold lives on
-// the Drawable subclass via IsNonDegenerate.
 void CommitOrCancelPending() {
     if (g_Pending is null) return;
     if (g_Pending.IsNonDegenerate()) CommitPending(g_Pending);
     else @g_Pending = null;
 }
 
-// Resolves a press-drag bounding-box shape (Rect, Ellipse) into its (corner1, corner2) pair,
-// honoring Shift = square and Ctrl = from-center. `anchor` is the original press position.
 void ResolveBoxCorners(const vec2 &in anchor, const vec2 &in mousePos, vec2 &out c1, vec2 &out c2) {
     vec2 endPos = IsShiftDown() ? ConstrainSquare(anchor, mousePos) : mousePos;
     if (IsCtrlDown()) {
@@ -199,9 +183,6 @@ void HandleBracket(const vec2 &in mousePos, bool mouseDown, bool pressed, bool r
     }
 }
 
-// Polygon breaks the press-drag-release contract of the other shape tools: each click adds a
-// vertex, click near the first vertex (or press Enter) closes, Escape cancels. The pending
-// polygon lives in g_Pending across multiple clicks until commit/cancel.
 void HandlePolygon(const vec2 &in mousePos, bool pressed) {
     Polygon@ p = (g_Pending !is null) ? cast<Polygon>(g_Pending) : null;
 
@@ -225,13 +206,11 @@ void HandlePolygon(const vec2 &in mousePos, bool pressed) {
         np.Dashed = S_Dashed;
         np.Filled = S_PolygonFill;
         np.Vertices.InsertLast(mousePos);
-        // Polygon anchors on the first click; subsequent vertex clicks add screen-space points.
         AttachWorldAnchor(np, mousePos);
         @g_Pending = np;
         return;
     }
 
-    // Click near the first vertex closes the polygon (need 3+ vertices for a triangle minimum).
     vec2 storedMouse = p.ToStored(mousePos);
     if (p.Vertices.Length >= 3 && Distance(storedMouse, p.Vertices[0]) <= 8.0f) {
         CommitPending(p);
@@ -240,9 +219,6 @@ void HandlePolygon(const vec2 &in mousePos, bool pressed) {
     p.Vertices.InsertLast(storedMouse);
 }
 
-// Two-stage gesture: stage 1 is press-drag-release to set Start+End (Control = midpoint).
-// Stage 2 (AwaitingBend) tracks the mouse to position Control; the next click commits.
-// Escape cancels at either stage.
 void HandleCurvedArrow(const vec2 &in mousePos, bool mouseDown, bool pressed, bool released) {
     CurvedArrow@ ca = (g_Pending !is null) ? cast<CurvedArrow>(g_Pending) : null;
 
@@ -285,8 +261,6 @@ void HandleCurvedArrow(const vec2 &in mousePos, bool mouseDown, bool pressed, bo
 
 void HandleEraser(const vec2 &in mousePos, bool mouseDown, bool released) {
     if (mouseDown) {
-        // Iterate top-down so the most recent drawable goes first.
-        // One removal per frame to avoid wiping a whole cluster on a single click.
         for (int i = int(g_Drawables.Length) - 1; i >= 0; i--) {
             Drawable@ d = g_Drawables[i];
             if (IsColorLocked(d.Color)) continue;
@@ -337,9 +311,6 @@ void HandleMarker(const vec2 &in mousePos, bool pressed) {
     SaveState();
 }
 
-// Press priority: (1) handle of the persistently-selected drawable, (2) any drawable body —
-// which both selects and starts a body drag, (3) empty space, which deselects. Selection
-// persists across mouse-up so the user can grab the same drawable's handles repeatedly.
 void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool released) {
     if (pressed) {
         if (g_SelectedDrawable !is null) {
@@ -360,7 +331,6 @@ void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool re
                 @g_DraggedDrawable = candidate;
                 g_DragLastPos = mousePos;
                 g_DragMoved = false;
-                // Latch Y-axis mode at press time so toggling Alt mid-drag doesn't switch modes.
                 g_DragYAxis = candidate.WorldAnchored && IsAltDown();
                 return;
             }
@@ -375,18 +345,12 @@ void HandleSelect(const vec2 &in mousePos, bool mouseDown, bool pressed, bool re
             vec2 delta = mousePos - g_DragLastPos;
             if (delta.x != 0.0f || delta.y != 0.0f) {
                 if (g_DragYAxis) {
-                    // Camera-aware scaling: a far-away mark moves more meters per screen
-                    // pixel than a close one, so the felt response is constant across zooms.
                     float mpp = WorldYPerScreenPixel(g_DraggedDrawable.WorldAnchor);
                     if (mpp != 0.0f) {
                         g_DraggedDrawable.WorldAnchor.y -= delta.y * mpp;
                         g_DragMoved = true;
                     }
                 } else {
-                    // Body drag: pure cursor delta carries through to stored coords. If the
-                    // camera also moves between frames mid-drag the drawable will visually
-                    // overshoot by Δoffset; in practice users drag while the camera is paused
-                    // (replay scrubber), so we don't track a baseline offset.
                     g_DraggedDrawable.Translate(delta);
                     g_DragMoved = true;
                 }
