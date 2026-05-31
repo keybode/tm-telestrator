@@ -1,6 +1,4 @@
-// Plugin settings. Variables decorated with [Setting ...] are auto-persisted by Openplanet
-// across sessions and surface in the Openplanet settings dialog. New entries are appended
-// here (never reordered) so existing user configs stay valid across versions.
+// Plugin settings
 
 [Setting name="Brush thickness" min=1 max=16]
 float S_BrushThickness = 4.0f;
@@ -23,22 +21,15 @@ bool S_Dashed = false;
 [Setting name="Polygon fill (translucent)"]
 bool S_PolygonFill = false;
 
-// When enabled, marks committed in-map capture a world-space anchor at the player car's
-// altitude so they slide with the camera instead of staying glued to the screen. Falls
-// back to plain screen-space when not in-map or no car is available — see util/projection.as.
 [Setting name="World-anchor new marks"]
 bool S_WorldAnchor = false;
 
-// Read once in Main() to set the initial g_WindowVisible state. Mid-session close/open is
-// independent of this flag — it only seeds the window state at plugin load.
 [Setting name="Open toolbar automatically on startup"]
 bool S_AutoOpenOnLoad = false;
 
 [Setting name="Custom palette color" color]
 vec4 S_CustomColor = vec4(0.85f, 0.55f, 0.95f, 1.0f);
 
-// Whitelist of keys exposed for hotkey rebinding. New entries can be appended (never reordered)
-// so existing user configs stay valid. Mapped to UI::Key in HotkeyKeyToUIKey (util/helpers.as).
 enum HotkeyKey {
     F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
     A, B, C, D, E, F, G, H, I, J, K, L, M,
@@ -46,7 +37,6 @@ enum HotkeyKey {
     N0, N1, N2, N3, N4, N5, N6, N7, N8, N9
 }
 
-// Hotkey toggles — each defaults on. Disable individually if the bound key collides with a TM bind.
 [Setting category="Hotkeys" name="Toggle drawing — enabled"]
 bool S_HotkeyToggle = true;
 [Setting category="Hotkeys" name="Toggle drawing — key" description="Fires whenever Trackmania has focus, including while driving. Avoid keys used by your TM controls (W/A/S/D, throttle, etc.)."]
@@ -67,7 +57,6 @@ bool S_HotkeyClear = true;
 [Setting category="Hotkeys" name="Clear — key" description="Fires whenever Trackmania has focus, including while driving. Avoid keys used by your TM controls (W/A/S/D, throttle, etc.)."]
 HotkeyKey S_HotkeyClearKey = HotkeyKey::C;
 
-// Per-color eraser locks — checked by IsColorLocked() in util/helpers.as.
 [Setting name="Lock Brake (red) from eraser"]
 bool S_LockRed = false;
 [Setting name="Lock Accel (green) from eraser"]
