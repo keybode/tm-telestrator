@@ -1,33 +1,13 @@
-// Translucent-fill union meshing.
-//
-// A translucent shape (highlighter stroke, filled polygon) rendered as a series of
-// overlapping primitives stacks alpha at every overlap, so a self-crossing path or a
-// triangulated fill comes out patchwork-darker. ImGui has no API to disable AA on fills,
-// and Openplanet doesn't expose AddConvexPolyFilled — so we instead render the shape as
-// a list of axis-aligned filled rects whose union equals the shape. Every pixel inside
-// the union gets exactly one fill. Adjacent rects still share AA-fringed edges (the
-// underlying ImGui limitation), but the artifact is less visually prominent than
-// diagonal triangulation seams.
-//
-// Algorithm: rasterize the shape onto a coarse boolean grid (CELL pixels per cell),
-// then greedy-mesh consecutive marked cells into maximal axis-aligned rectangles.
-// Performance: O(bbox_area / CELL^2) per build. A typical highlighter stroke
-// (~600x300 px bbox at CELL=2) builds in well under 10ms; MAX_GRID_AREA caps
-// pathological cases and the caller falls back to per-segment rendering.
 
 const float MESH_CELL = 2.0f;
 const int MESH_MAX_GRID_AREA = 4 * 1024 * 1024;
 
-// Builds the union mesh for a polyline of `points` swept by a disc of radius `r`.
-// Returns an empty array if the input is degenerate or the bounding box exceeds
-// MESH_MAX_GRID_AREA cells.
 array<vec4> BuildStrokeUnionMesh(const array<vec2> &in points, float r) {
     array<vec4> mesh;
     if (points.Length == 0 || r <= 0.0f) return mesh;
 
     vec2 mn, mx;
     ComputeBounds(points, mn, mx);
-    // Pad by r (disc radius) plus one cell of slack so cells on the boundary aren't clipped.
     mn = vec2(mn.x - r - MESH_CELL, mn.y - r - MESH_CELL);
     mx = vec2(mx.x + r + MESH_CELL, mx.y + r + MESH_CELL);
 
@@ -51,7 +31,6 @@ array<vec4> BuildStrokeUnionMesh(const array<vec2> &in points, float r) {
     return mesh;
 }
 
-// Builds the fill mesh for a simple polygon under the even-odd fill rule.
 array<vec4> BuildPolygonFillMesh(const array<vec2> &in vertices) {
     array<vec4> mesh;
     if (vertices.Length < 3) return mesh;
@@ -69,10 +48,6 @@ array<vec4> BuildPolygonFillMesh(const array<vec2> &in vertices) {
     array<bool> grid;
     grid.Resize(uint(nx * ny));
 
-    // Horizontal scanline. For each row's center y, find x intersections with polygon
-    // edges, sort, and mark cells between consecutive pairs. An edge contributes one
-    // crossing iff exactly one endpoint has y' > y (strict) — this skips horizontal
-    // edges and gives consistent counts at vertex coincidences.
     array<float> xs;
     for (int yi = 0; yi < ny; yi++) {
         float y = mn.y + (float(yi) + 0.5f) * MESH_CELL;
@@ -109,7 +84,6 @@ array<vec4> BuildPolygonFillMesh(const array<vec2> &in vertices) {
     return mesh;
 }
 
-// Marks every grid cell whose center is within `r` of point `p`.
 void RasterizeDiscIntoGrid(array<bool> &inout grid, int nx, int ny, const vec2 &in origin, const vec2 &in p, float r) {
     int minX = int(Math::Floor((p.x - r - origin.x) / MESH_CELL));
     int maxX = int(Math::Floor((p.x + r - origin.x) / MESH_CELL));
@@ -134,11 +108,6 @@ void RasterizeDiscIntoGrid(array<bool> &inout grid, int nx, int ny, const vec2 &
     }
 }
 
-// Marks every grid cell whose center is within `r` of segment [a, b]. The marked region
-// is a stadium (rectangle of width 2r between a and b, with semicircular endpoint caps).
-// The inner-loop point-to-segment math is inlined rather than calling
-// PointToSegmentDistance because we want squared distance (no Math::Sqrt) and we hoist
-// invLenSq once per segment.
 void RasterizeStadiumIntoGrid(array<bool> &inout grid, int nx, int ny, const vec2 &in origin, const vec2 &in a, const vec2 &in b, float r) {
     vec2 ab = vec2(b.x - a.x, b.y - a.y);
     float lenSq = ab.x * ab.x + ab.y * ab.y;
@@ -181,9 +150,6 @@ void RasterizeStadiumIntoGrid(array<bool> &inout grid, int nx, int ny, const vec
     }
 }
 
-// Greedy meshing of a binary grid into maximal axis-aligned rectangles. Output rects are
-// (x1, y1, x2, y2) in world coordinates spanning [x1, x2) x [y1, y2). Adjacent output
-// rects abut exactly — no overlap.
 void GreedyMeshIntoRects(array<bool> &inout grid, int nx, int ny, const vec2 &in origin, array<vec4> &inout outRects) {
     array<bool> consumed;
     consumed.Resize(grid.Length);
@@ -232,17 +198,12 @@ void GreedyMeshIntoRects(array<bool> &inout grid, int nx, int ny, const vec2 &in
     }
 }
 
-// Shifts every rect in `rects` by `delta` in place. Used by Drawable subclasses that
-// cache a fill mesh (Stroke for highlighter, Polygon for filled) to keep the mesh
-// aligned with the source vertices through Translate without forcing a rebuild.
 void TranslateRectArray(array<vec4> &inout rects, const vec2 &in delta) {
     for (uint i = 0; i < rects.Length; i++) {
         rects[i] = vec4(rects[i].x + delta.x, rects[i].y + delta.y, rects[i].z + delta.x, rects[i].w + delta.y);
     }
 }
 
-// Filled axis-aligned rectangle from (min, max). Wraps the 4-vec2-corner expansion that
-// AddQuadFilled requires.
 void DrawFilledRect(UI::DrawList@ drawList, const vec2 &in min, const vec2 &in max, const vec4 &in color) {
     drawList.AddQuadFilled(
         vec2(min.x, min.y),
@@ -252,7 +213,6 @@ void DrawFilledRect(UI::DrawList@ drawList, const vec2 &in min, const vec2 &in m
         color);
 }
 
-// Renders a list of (x1, y1, x2, y2) rects as filled quads in `color`.
 void DrawRectMesh(UI::DrawList@ drawList, const array<vec4> &in rects, const vec4 &in color) {
     for (uint i = 0; i < rects.Length; i++) {
         vec4 r = rects[i];
