@@ -1,16 +1,3 @@
-// Dashed-line helper. `phase` is the starting dash offset; the returned value is the offset
-// after this segment, so callers drawing multi-segment paths can chain it call-to-call and
-// avoid resetting the dash pattern at every vertex. AngelScript doesn't permit `&inout` on
-// primitive types, hence the return-value plumbing.
-//
-// Iterates by integer cycle index k (each k contributes one dash spanning [k*cycle - phase,
-// k*cycle - phase + dashLen] in arc-length space, clipped to [0, len]). This is bounded by
-// ceil(len/cycle) + 1 iterations and avoids the FP boundary trap of the previous walk-by-step
-// formulation, where Math::Floor((phase+traveled)/cycle) at a cycle boundary could land
-// `withinCycle` just inside the gap and produce a near-zero `step` that, on a long segment,
-// fell below the float precision of `traveled` — infinite loop. MAX_DASHES is a defensive
-// cap for pathological lengths (e.g. a world-anchored mark whose anchor projects far
-// off-screen mid-camera-move) so we truncate rendering rather than stall the frame.
 float DrawDashedSegment(UI::DrawList@ drawList, const vec2 &in a, const vec2 &in b, const vec4 &in c, float thickness, float phase) {
     float dashLen = Math::Max(thickness * 3.0f, 6.0f);
     float gapLen = dashLen * 0.6f;
@@ -43,8 +30,6 @@ float Distance(const vec2 &in a, const vec2 &in b) {
     return Math::Sqrt(d.x * d.x + d.y * d.y);
 }
 
-// AABB of a vec2 array. Returns (0,0)-(0,0) on empty input — callers that care about
-// emptiness should check `pts.Length` first.
 void ComputeBounds(const array<vec2> &in pts, vec2 &out boundsMin, vec2 &out boundsMax) {
     if (pts.Length == 0) {
         boundsMin = vec2(0, 0);
@@ -84,8 +69,6 @@ bool ColorsEqual(const vec4 &in a, const vec4 &in b) {
         && Math::Abs(a.w - b.w) < 0.001f;
 }
 
-// RGB-only equality. Used for layer-lock matching so highlighter strokes (which dim the alpha
-// of the current color) still match against their source palette entry.
 bool ColorsEqualRGB(const vec4 &in a, const vec4 &in b) {
     return Math::Abs(a.x - b.x) < 0.001f
         && Math::Abs(a.y - b.y) < 0.001f
@@ -104,8 +87,6 @@ bool IsAltDown() {
     return UI::IsKeyDown(UI::Key::LeftAlt) || UI::IsKeyDown(UI::Key::RightAlt);
 }
 
-// Snaps the line `origin -> target` to the nearest multiple of `angleStep` radians,
-// preserving the original distance from origin.
 vec2 ConstrainAngle(const vec2 &in origin, const vec2 &in target, float angleStep) {
     vec2 d = target - origin;
     float len = Math::Sqrt(d.x * d.x + d.y * d.y);
@@ -115,8 +96,6 @@ vec2 ConstrainAngle(const vec2 &in origin, const vec2 &in target, float angleSte
     return vec2(origin.x + Math::Cos(snapped) * len, origin.y + Math::Sin(snapped) * len);
 }
 
-// Returns `target` snapped so the bounding box from `anchor` is square (equal width/height).
-// The longer drag axis wins; the shorter axis grows to match it. Sign is preserved per axis.
 vec2 ConstrainSquare(const vec2 &in anchor, const vec2 &in target) {
     float dx = target.x - anchor.x;
     float dy = target.y - anchor.y;
@@ -126,8 +105,6 @@ vec2 ConstrainSquare(const vec2 &in anchor, const vec2 &in target) {
     return vec2(anchor.x + sx * m, anchor.y + sy * m);
 }
 
-// Draws an arrowhead V at `tip` pointing along `unit` (the unit vector from base to tip).
-// Shared by Arrow and CurvedArrow so the head geometry stays consistent.
 void DrawArrowhead(UI::DrawList@ drawList, const vec2 &in tip, const vec2 &in unit, float thickness, const vec4 &in c) {
     vec2 perp = vec2(-unit.y, unit.x);
     float headSize = Math::Max(10.0f, thickness * 3.0f);
@@ -138,13 +115,10 @@ void DrawArrowhead(UI::DrawList@ drawList, const vec2 &in tip, const vec2 &in un
     drawList.AddLine(tip, right, c, thickness);
 }
 
-// Twice the signed area of triangle (a, b, c). Sign indicates winding direction; absolute value
-// is twice the geometric area. Used for ear-clipping convexity tests and point-in-triangle.
 float TriangleSignedArea2(const vec2 &in a, const vec2 &in b, const vec2 &in c) {
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
-// Inclusive point-in-triangle test. Vertices may be wound either way.
 bool PointInTriangle(const vec2 &in p, const vec2 &in a, const vec2 &in b, const vec2 &in c) {
     float d1 = TriangleSignedArea2(p, a, b);
     float d2 = TriangleSignedArea2(p, b, c);
@@ -154,10 +128,6 @@ bool PointInTriangle(const vec2 &in p, const vec2 &in a, const vec2 &in b, const
     return !(hasNeg && hasPos);
 }
 
-// Ear-clipping triangulation of a simple polygon. Handles convex AND concave shapes correctly;
-// self-intersecting or otherwise degenerate inputs fall back to fan triangulation from vertex 0
-// (visually wrong but bounded). Returns a flat array where every consecutive triple of vec2s
-// is one triangle. Empty array if input has fewer than 3 vertices.
 array<vec2> TriangulatePolygon(const array<vec2> &in pts) {
     array<vec2> outTris;
     if (pts.Length < 3) return outTris;
@@ -168,8 +138,6 @@ array<vec2> TriangulatePolygon(const array<vec2> &in pts) {
         return outTris;
     }
 
-    // Detect winding via shoelace sum so the convexity test below matches the polygon's
-    // orientation (otherwise reflex vertices look like ears and vice versa).
     float shoelace = 0.0f;
     for (uint i = 0; i < pts.Length; i++) {
         vec2 a = pts[i];
@@ -181,7 +149,6 @@ array<vec2> TriangulatePolygon(const array<vec2> &in pts) {
     array<uint> idx;
     for (uint i = 0; i < pts.Length; i++) idx.InsertLast(i);
 
-    // Each successful ear clip removes one vertex; bound iterations defensively.
     int guard = int(pts.Length) * int(pts.Length);
 
     while (idx.Length > 3 && guard-- > 0) {
@@ -194,11 +161,9 @@ array<vec2> TriangulatePolygon(const array<vec2> &in pts) {
             vec2 b = pts[idx[i]];
             vec2 c = pts[idx[nextI]];
 
-            // Convex relative to polygon winding.
             float cross = TriangleSignedArea2(a, b, c);
             if (ccw ? cross <= 0.0f : cross >= 0.0f) continue;
 
-            // No other polygon vertex may lie inside the candidate triangle.
             bool clean = true;
             for (uint j = 0; j < n; j++) {
                 if (j == prevI || j == i || j == nextI) continue;
@@ -217,7 +182,6 @@ array<vec2> TriangulatePolygon(const array<vec2> &in pts) {
             break;
         }
         if (!foundEar) {
-            // Self-intersecting or degenerate — fall back to fan triangulation.
             outTris.RemoveRange(0, outTris.Length);
             for (uint k = 1; k + 1 < pts.Length; k++) {
                 outTris.InsertLast(pts[0]);
@@ -236,9 +200,6 @@ array<vec2> TriangulatePolygon(const array<vec2> &in pts) {
     return outTris;
 }
 
-// Maps the user-facing HotkeyKey (declared in state/settings.as so Openplanet can render it as
-// a settings dropdown) to the corresponding UI::Key the runtime polls. Explicit switch so the
-// mapping survives any future renumbering of UI::Key int values.
 UI::Key HotkeyKeyToUIKey(HotkeyKey k) {
     switch (k) {
         case HotkeyKey::F1: return UI::Key::F1;
@@ -290,10 +251,9 @@ UI::Key HotkeyKeyToUIKey(HotkeyKey k) {
         case HotkeyKey::N8: return UI::Key::N8;
         case HotkeyKey::N9: return UI::Key::N9;
     }
-    return UI::Key::F7;  // unreachable; keeps the compiler happy
+    return UI::Key::F7;
 }
 
-// Display name for a HotkeyKey (used by the toolbar's hotkey row labels).
 string HotkeyKeyName(HotkeyKey k) {
     switch (k) {
         case HotkeyKey::F1: return "F1";
@@ -348,8 +308,6 @@ string HotkeyKeyName(HotkeyKey k) {
     return "?";
 }
 
-// True if `color` matches a palette entry the user has locked. Used by the eraser to
-// preserve "base diagram" annotations while iterating on overlays.
 bool IsColorLocked(const vec4 &in color) {
     if (S_LockRed && ColorsEqualRGB(color, g_Palette[0].Color)) return true;
     if (S_LockGreen && ColorsEqualRGB(color, g_Palette[1].Color)) return true;
