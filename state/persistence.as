@@ -2,8 +2,6 @@ const string SAVE_FILENAME = "state.json";
 const int SAVE_FORMAT_VERSION = 1;
 
 void SaveState() {
-    // IO::FromStorageFolder auto-creates the per-plugin storage folder on first call,
-    // so no need to FolderExists/CreateFolder beforehand.
     Json::Value@ root = Json::Object();
     root["version"] = SAVE_FORMAT_VERSION;
     root["tool"] = int(g_CurrentTool);
@@ -32,7 +30,6 @@ void LoadState() {
     }
     if (root.HasKey("tool")) {
         int t = int(root["tool"]);
-        // Upper bound must track the last appended Tool enum member.
         if (t >= int(Tool::Pen) && t <= int(Tool::CurvedArrow)) {
             g_CurrentTool = Tool(t);
         }
@@ -50,14 +47,11 @@ void LoadState() {
             Drawable@ d = DeserializeDrawable(arr[i]);
             if (d !is null) {
                 g_Drawables.InsertLast(d);
-                // Seed the undo stack so loaded drawables can be peeled off via UndoLast,
-                // matching the pre-op-stack behavior. Redo stack stays empty (not persisted).
                 g_UndoStack.InsertLast(HistoryOp(HOP_Create, d, -1));
             }
         }
     }
 
-    // Ensure marker numbering continues past whatever was loaded.
     for (uint i = 0; i < g_Drawables.Length; i++) {
         NumberMarker@ m = cast<NumberMarker>(g_Drawables[i]);
         if (m !is null && m.Number >= g_NextMarkerNumber) {
@@ -84,8 +78,6 @@ Drawable@ DeserializeDrawable(Json::Value@ obj) {
                 s.Points.InsertLast(DeserializePoint(pts[i]));
             }
         }
-        // Rebake the union mesh from the loaded points; not serialized to keep state.json
-        // small and to let CELL changes take effect on reload without a migration.
         s.RebuildMesh();
         @d = s;
     } else if (type == "arrow") {
@@ -171,9 +163,6 @@ Drawable@ DeserializeDrawable(Json::Value@ obj) {
     if (d !is null && obj.HasKey("color")) {
         d.Color = DeserializeColor(obj["color"]);
     }
-    // World-anchor restore is gated on the feature flag (see telestrator/main.as). When the
-    // feature is disabled for shipping, persisted anchors from older saves stay dormant — the
-    // drawable loads with WorldAnchored=false and renders at its stored screen position.
     if (g_WorldAnchorFeatureEnabled && d !is null && obj.HasKey("worldAnchored") && bool(obj["worldAnchored"])) {
         d.WorldAnchored = true;
         if (obj.HasKey("worldAnchor")) d.WorldAnchor = DeserializeVec3(obj["worldAnchor"]);
