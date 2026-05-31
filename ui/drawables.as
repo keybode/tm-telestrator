@@ -1,26 +1,11 @@
-// Drawable hierarchy
-//
-// g_Drawables holds every committed mark on screen, polymorphic over the Drawable subclasses.
-// In-flight state lives in two parallel slots:
-//   - g_ActiveStroke is a handle into g_Drawables (mutated as points stream in for pen/highlighter).
-//   - g_Pending lives outside g_Drawables until release; only committed if non-degenerate.
-// This split keeps Undo simple (always pops from g_Drawables) and avoids ever leaving a
-// zero-length shape visible.
 
 class Drawable {
     vec4 Color;
     uint64 CreatedAt;
-    // World-anchor state. When WorldAnchored is true, the renderer rigidly translates the
-    // drawable each frame by (project(WorldAnchor) - ScreenAnchorAtCommit) so the mark
-    // tracks the world point captured at press time. See util/projection.as.
     bool WorldAnchored;
     vec3 WorldAnchor;
     vec2 ScreenAnchorAtCommit;
 
-    // Per-frame cache of the projected screen offset. Several traversals (DrawAll, hover,
-    // eraser, select) all need the same value; CurrentOffset() recomputes once per frame
-    // by stamping g_FrameCounter and reusing the cached vec2 across callers. m_OffsetValid
-    // is the "anchor is in front of the camera" flag from the last recompute.
     uint64 m_OffsetFrame;
     vec2 m_CachedOffset;
     bool m_OffsetValid;
@@ -36,8 +21,6 @@ class Drawable {
         m_OffsetValid = true;
     }
 
-    // Stored-frame primitives: subclasses implement these. Callers outside this class should
-    // prefer the *Screen variants below, which transparently apply the world-anchor offset.
     void Draw(UI::DrawList@ drawList, float alphaMul) {}
     bool HitTest(const vec2 &in pos, float radius) { return false; }
     void Translate(const vec2 &in delta) {}
@@ -46,21 +29,11 @@ class Drawable {
         boundsMax = vec2(0, 0);
     }
 
-    // Edit handles for the Select tool. Index identity is stable across frames so a drag started
-    // on handle i keeps mutating the same logical control point — even if a box-shape's corners
-    // visually flip past each other mid-drag. Drawables that return an empty array can still be
-    // moved via the body drag in HandleSelect, just not reshaped.
     array<vec2> GetHandles() { return array<vec2>(); }
     void MoveHandle(int index, const vec2 &in pos) {}
 
-    // Smallest-extent test for press-drag-release tools. Default false (one-shot inserts
-    // like Marker / Text always commit); shape subclasses override to enforce a minimum
-    // drag distance so a stray click doesn't leave a zero-length mark behind.
     bool IsNonDegenerate() { return true; }
 
-    // Returns the current screen-space offset to apply when rendering or interacting. Cached
-    // for the duration of one frame via g_FrameCounter so multiple per-frame loops over
-    // g_Drawables don't each repeat the camera projection.
     vec2 CurrentOffset() {
         if (!WorldAnchored) return vec2(0, 0);
         if (m_OffsetFrame != g_FrameCounter) {
@@ -70,18 +43,12 @@ class Drawable {
         return m_OffsetValid ? m_CachedOffset : vec2(0, 0);
     }
 
-    // True if the anchor projects in front of the camera right now. DrawAll uses this to
-    // skip rendering when the anchor is behind the camera (would otherwise paint at a
-    // stale screen position).
     bool IsAnchorVisible() {
         if (!WorldAnchored) return true;
-        // Force the cache to refresh if it's stale before reading m_OffsetValid.
         CurrentOffset();
         return m_OffsetValid;
     }
 
-    // Screen-frame wrappers. Callers pass current-frame mouse coords; these adjust into the
-    // stored frame internally so adding a new caller can't forget the offset.
     bool HitTestScreen(const vec2 &in screenPos, float radius) {
         return HitTest(screenPos - CurrentOffset(), radius);
     }
@@ -102,8 +69,6 @@ class Drawable {
         boundsMax = boundsMax + off;
     }
 
-    // Converts a screen-frame position into the drawable's stored frame. Used during drag
-    // mutations so points captured across a moving camera stay aligned with each other.
     vec2 ToStored(const vec2 &in screenPos) {
         return screenPos - CurrentOffset();
     }
@@ -123,15 +88,9 @@ class Drawable {
 class Stroke : Drawable {
     float Thickness;
     bool Dashed;
-    // Highlighter strokes render through a pre-baked union mesh so a self-crossing
-    // translucent path doesn't stack alpha at every crossing. See util/mesh.as.
     bool Highlighter;
     array<vec2> Points;
 
-    // Cached union mesh for highlighter strokes — list of axis-aligned filled rectangles
-    // whose union exactly covers the swept-disc shape of Points. Built by RebuildMesh on
-    // FinishStroke and on load. While MeshDirty (active drag, fresh deserialize, or
-    // overflowed grid bound) we fall back to per-segment line + vertex-disc rendering.
     array<vec4> Mesh;
     bool MeshDirty;
 
@@ -147,9 +106,6 @@ class Stroke : Drawable {
         if (Points.Length == 0) return;
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
 
-        // Highlighter: render the union mesh — uniform alpha across self-crossings. Falls
-        // through to the per-segment renderer if the grid bound is exceeded
-        // (BuildStrokeUnionMesh returns empty).
         if (Highlighter) {
             if (MeshDirty) RebuildMesh();
             if (Mesh.Length > 0) {
@@ -171,8 +127,6 @@ class Stroke : Drawable {
             return;
         }
 
-        // The vertex discs are round joints/caps — without them, AddLine's butt caps
-        // leave triangular gaps on the outside of every bend.
         for (uint i = 1; i < Points.Length; i++) {
             drawList.AddLine(Points[i - 1], Points[i], c, Thickness);
         }
@@ -252,7 +206,6 @@ class Arrow : Drawable {
         } else {
             drawList.AddLine(Start, End, c, Thickness);
         }
-        // Head stays solid even on dashed arrows; a dashed head reads as broken.
         DrawHead(drawList, c);
     }
 
@@ -411,8 +364,6 @@ class RectShape : Drawable {
         NormalizedCorners(boundsMin, boundsMax);
     }
 
-    // Handles are anchored to the unnormalized Corner1/Corner2 (not the min/max projection) so
-    // a drag that flips the box past itself keeps mutating the same logical corner.
     array<vec2> GetHandles() override {
         array<vec2> h;
         h.InsertLast(Corner1);
@@ -472,8 +423,6 @@ class CircleShape : Drawable {
         boundsMax = vec2(Center.x + Radius, Center.y + Radius);
     }
 
-    // Four cardinal rim handles. All four adjust the radius identically — they're really four
-    // grab targets for the same scalar parameter, not four independent axes.
     array<vec2> GetHandles() override {
         array<vec2> h;
         h.InsertLast(vec2(Center.x + Radius, Center.y));
@@ -535,8 +484,6 @@ class EllipseShape : Drawable {
     }
 
     bool HitTest(const vec2 &in pos, float radius) override {
-        // Bounds-rim approximation: hit if within `radius` of the ellipse's parametric curve.
-        // Fast check: discard anything well outside the bounding box first.
         vec2 a, b;
         NormalizedCorners(a, b);
         float rx = (b.x - a.x) * 0.5f;
@@ -545,11 +492,9 @@ class EllipseShape : Drawable {
         vec2 center = vec2(a.x + rx, a.y + ry);
         float threshold = radius + Thickness * 0.5f;
 
-        // Normalize the test point into unit-circle space; if (nx^2 + ny^2) is near 1 it's near the rim.
         float nx = (pos.x - center.x) / rx;
         float ny = (pos.y - center.y) / ry;
         float r2 = nx * nx + ny * ny;
-        // Rough conversion of unit-space radial offset into pixel distance using min radius.
         float minR = Math::Min(rx, ry);
         float pixelOff = Math::Abs(Math::Sqrt(r2) - 1.0f) * minR;
         return pixelOff <= threshold;
@@ -650,7 +595,6 @@ class NumberMarker : Drawable {
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
         float radius = Size * 0.5f;
         drawList.AddCircleFilled(Position, radius, c);
-        // Pick text color by relative luminance so it stays readable on bright + dark fills.
         float lum = Color.x * 0.299f + Color.y * 0.587f + Color.z * 0.114f;
         vec4 textColor = lum > 0.55f
             ? vec4(0, 0, 0, alphaMul)
@@ -709,13 +653,10 @@ class Measurement : Drawable {
         float len = Math::Sqrt(d.x * d.x + d.y * d.y);
         if (len < 0.01f) return;
         vec2 unit = vec2(d.x / len, d.y / len);
-        // CCW-90 perpendicular (matches existing Arrow head orientation).
         vec2 perp = vec2(-unit.y, unit.x);
-        // Tick marks at both endpoints — both directions, so the line reads as a ruler segment.
         float tickHalf = Math::Max(6.0f, Thickness * 1.5f);
         drawList.AddLine(Start - perp * tickHalf, Start + perp * tickHalf, c, Thickness);
         drawList.AddLine(End - perp * tickHalf, End + perp * tickHalf, c, Thickness);
-        // Length label, offset on the opposite perp side so it always sits "above" a horizontal line.
         vec2 labelPerp = vec2(unit.y, -unit.x);
         vec2 mid = (Start + End) * 0.5f;
         string label = "" + int(len + 0.5f) + " px";
@@ -787,7 +728,6 @@ class Bracket : Drawable {
         float len = Math::Sqrt(d.x * d.x + d.y * d.y);
         if (len < 0.01f) return;
         vec2 unit = vec2(d.x / len, d.y / len);
-        // Caps extend perpendicular to one side only — visually `[ ... ]`, not an I-beam.
         vec2 perp = vec2(-unit.y, unit.x);
         float capLen = Math::Max(16.0f, Thickness * 4.0f);
         drawList.AddLine(Start, Start + perp * capLen, c, Thickness);
@@ -839,11 +779,6 @@ class Polygon : Drawable {
     bool Dashed;
     bool Filled;
 
-    // Cached fill mesh for filled polygons. Same pattern as the highlighter Stroke mesh:
-    // axis-aligned filled rects whose union covers the polygon interior. Replaces per-
-    // triangle ear-clipping fill, where every internal triangulation edge produced a
-    // visible AA-fringe seam. Lazily rebuilt in Draw when FillMeshDirty is set (after
-    // construction, MoveHandle, or load); Translate shifts the cached rects in place.
     array<vec4> FillMesh;
     bool FillMeshDirty;
 
@@ -871,8 +806,6 @@ class Polygon : Drawable {
     void Draw(UI::DrawList@ drawList, float alphaMul) override {
         if (Vertices.Length == 0) return;
         vec4 c = vec4(Color.x, Color.y, Color.z, Color.w * alphaMul);
-        // Building means this instance is currently in g_Pending — used to skip the closing edge
-        // and draw a live preview line to the mouse.
         bool building = (g_Pending !is null && g_Pending is this);
 
         if (Filled && !building && Vertices.Length >= 3) {
@@ -889,7 +822,6 @@ class Polygon : Drawable {
             vec2 mouse = UI::GetMousePos();
             vec4 preview = vec4(c.x, c.y, c.z, c.w * 0.5f);
             drawList.AddLine(Vertices[Vertices.Length - 1], mouse, preview, Thickness);
-            // First-vertex marker doubles as the close target.
             float r = Math::Max(5.0f, Thickness);
             drawList.AddCircle(Vertices[0], r, c, 0, 1.5f);
             if (Vertices.Length >= 3 && Distance(mouse, Vertices[0]) <= 8.0f) {
@@ -963,8 +895,6 @@ class CurvedArrow : Drawable {
     vec2 Control;
     float Thickness;
     bool Dashed;
-    // True only while pending and waiting for the user to position the bend; never serialized
-    // since committed curved arrows are always done.
     bool AwaitingBend;
 
     CurvedArrow() {
@@ -997,7 +927,6 @@ class CurvedArrow : Drawable {
                 prev = p;
             }
         }
-        // Tangent at t=1 is 2*(End-Control); fall back to End-Start if degenerate.
         vec2 tangent = End - Control;
         float tlen = Math::Sqrt(tangent.x * tangent.x + tangent.y * tangent.y);
         if (tlen < 0.01f) {
