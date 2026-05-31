@@ -1,9 +1,3 @@
-// Canvas rendering. The per-frame Render() callback in main.as calls DrawAll() before
-// HandleDrawingInput() so a freshly-finished mark shows up the same frame, and
-// DrawCursorPreview() last so the cursor sits on top of everything.
-//
-// Drawing happens on UI::GetBackgroundDrawList(), which paints across the whole screen,
-// beneath ImGui windows but above the game.
 
 void DrawAll() {
     auto drawList = UI::GetBackgroundDrawList();
@@ -57,10 +51,6 @@ void DrawTextLabelOverlay(UI::DrawList@ drawList, TextLabel@ t) {
     drawList.AddText(textPos, vec4(1, 1, 1, 1), sizeLabel, null, fontSize);
 }
 
-// Renders a drawable, applying its world anchor as a rigid screen-space translate. The
-// translate-then-untranslate is mutate-and-restore (vs. passing offset into Draw), which
-// is safe because per-frame Render calls DrawAll fully before HandleDrawingInput observes
-// any state. Subpixel float-rounding is the residual cost; visually irrelevant.
 void DrawWithAnchor(Drawable@ d, UI::DrawList@ drawList, float alpha) {
     if (!d.WorldAnchored) {
         d.Draw(drawList, alpha);
@@ -131,12 +121,10 @@ void DrawCursorPreview() {
         vec4 fill = vec4(g_CurrentColor.x, g_CurrentColor.y, g_CurrentColor.z, 0.6f);
         drawList.AddCircle(mousePos, radius, fill, 0, 1.5f);
     } else if (g_CurrentTool == Tool::Select) {
-        // Persistent selection: bbox + handles always visible while selected.
         if (g_SelectedDrawable !is null) {
             DrawSelectionHighlight(drawList, g_SelectedDrawable);
             DrawSelectionHandles(drawList, g_SelectedDrawable);
         }
-        // Hover hint: only when not mid-drag and not already on the selected drawable.
         if (g_DraggedHandleIndex < 0 && g_DraggedDrawable is null) {
             Drawable@ hover = null;
             for (int i = int(g_Drawables.Length) - 1; i >= 0; i--) {
@@ -150,7 +138,6 @@ void DrawCursorPreview() {
             }
         }
     } else {
-        // Generic crosshair for the press-drag-release shape tools (Arrow, Line, Rect, Circle, Ellipse, Text).
         DrawCrosshair(drawList, mousePos, g_CurrentColor);
     }
 }
