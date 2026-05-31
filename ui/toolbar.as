@@ -1,6 +1,3 @@
-// ImGui-side UI: the main toolbar window, tool selector, palette swatches, and the
-// floating text-input popup. The drawing canvas itself (background draw list) is
-// rendered separately in main.as.
 
 void RenderToolbar() {
     g_BlockDrawingThisFrame = false;
@@ -45,8 +42,6 @@ void RenderToolbar() {
     S_AutoFadeSeconds = UI::SliderFloat("Auto-fade (s)", S_AutoFadeSeconds, 0.0f, 60.0f);
     S_Dashed = UI::Checkbox("Dashed lines", S_Dashed);
     S_PolygonFill = UI::Checkbox("Polygon fill (translucent)", S_PolygonFill);
-    // World-anchor checkbox hidden while the feature is disabled for shipping
-    // (see g_WorldAnchorFeatureEnabled in telestrator/main.as).
     if (g_WorldAnchorFeatureEnabled) {
         S_WorldAnchor = UI::Checkbox("World-anchor new marks", S_WorldAnchor);
         if (UI::BeginItemTooltip()) {
@@ -106,8 +101,6 @@ void RenderToolbar() {
     UI::End();
 }
 
-// Per-selection edit controls. Saves on UI::IsItemDeactivated (drag release) rather
-// than per-frame so a slider drag doesn't hammer state.json.
 void RenderSelectionEditor() {
     if (g_SelectedDrawable is null) return;
 
@@ -124,7 +117,6 @@ void RenderSelectionEditor() {
 }
 
 void RenderToolSelector() {
-    // Row 1: freeform draw
     if (UI::RadioButton("Pen##tool", g_CurrentTool == Tool::Pen)) {
         SetTool(Tool::Pen);
     }
@@ -141,7 +133,6 @@ void RenderToolSelector() {
         SetTool(Tool::Line);
     }
 
-    // Row 2: shapes
     if (UI::RadioButton("Rect##tool", g_CurrentTool == Tool::Rect)) {
         SetTool(Tool::Rect);
     }
@@ -154,7 +145,6 @@ void RenderToolSelector() {
         SetTool(Tool::Ellipse);
     }
 
-    // Row 3: annotation
     if (UI::RadioButton("Text##tool", g_CurrentTool == Tool::Text)) {
         SetTool(Tool::Text);
     }
@@ -163,7 +153,6 @@ void RenderToolSelector() {
         SetTool(Tool::Marker);
     }
 
-    // Row 4: measurement / advanced shapes
     if (UI::RadioButton("Measure##tool", g_CurrentTool == Tool::Measurement)) {
         SetTool(Tool::Measurement);
     }
@@ -180,7 +169,6 @@ void RenderToolSelector() {
         SetTool(Tool::Polygon);
     }
 
-    // Row 5: edit
     if (UI::RadioButton("Eraser##tool", g_CurrentTool == Tool::Eraser)) {
         SetTool(Tool::Eraser);
     }
@@ -192,15 +180,12 @@ void RenderToolSelector() {
 
 void SetTool(Tool t) {
     if (g_CurrentTool == t) return;
-    // Cancel any in-flight action when switching tools
     @g_ActiveStroke = null;
     @g_Pending = null;
     @g_DraggedDrawable = null;
     g_DraggedHandleIndex = -1;
     g_DragMoved = false;
     g_DragYAxis = false;
-    // Selection only makes sense for the Select tool — drop it when leaving so other tools
-    // don't keep a phantom highlighted drawable around.
     if (t != Tool::Select) @g_SelectedDrawable = null;
     g_CurrentTool = t;
 }
@@ -213,8 +198,6 @@ void RenderPalette() {
     }
 
     vec4 newCustom = UI::InputColor4("Custom##picker", S_CustomColor);
-    // If the user is currently drawing with the custom color, swap g_CurrentColor too so the
-    // edit takes effect immediately rather than after the next swatch click.
     if (!ColorsEqual(newCustom, S_CustomColor)) {
         if (ColorsEqual(g_CurrentColor, S_CustomColor)) {
             g_CurrentColor = newCustom;
@@ -234,13 +217,6 @@ void RenderPalette() {
     S_LockCustom = UI::Checkbox("C##lock", S_LockCustom);
 }
 
-// Renders the 4 named palette colors plus the custom-color swatch as a single row.
-// `idSuffix` disambiguates ImGui IDs when multiple rows coexist (e.g., main toolbar +
-// text-input popup). `current` is the color shown as selected (drawn larger).
-// Returns the picked index, or -1 if no click. Indices 0..g_Palette.Length-1 map to
-// palette entries; g_Palette.Length means the custom swatch was clicked. The caller
-// resolves the chosen color and decides whether to persist — vec4 is a value type so
-// AngelScript won't let us pass it as &inout or &out.
 int RenderPaletteRow(const string &in idSuffix, const string &in customLabel, const vec4 &in current) {
     int picked = -1;
     for (uint i = 0; i < g_Palette.Length; i++) {
@@ -255,8 +231,6 @@ int RenderPaletteRow(const string &in idSuffix, const string &in customLabel, co
     return picked;
 }
 
-// Returns true on click. The caller diffs `current` against `color` to decide
-// whether to apply the change (and whether to persist).
 bool RenderColorSwatch(const string &in id, const string &in label, const vec4 &in color, const vec4 &in current) {
     bool isSelected = ColorsEqual(current, color);
 
@@ -281,7 +255,6 @@ void RenderTextInput() {
     if (!g_TextInputOpen) return;
     TextLabel@ pending = cast<TextLabel>(g_Pending);
     if (pending is null) {
-        // Safety: popup is open but the pending label vanished (tool switch, etc.).
         CloseTextInput();
         return;
     }
@@ -304,15 +277,12 @@ void RenderTextInput() {
         }
         g_TextInputBuffer = UI::InputText("##textinput", g_TextInputBuffer);
 
-        // Initial Size comes from S_TextSize (set when HandleText created the pending
-        // label) so the per-label override doesn't drift the global default.
         pending.Size = UI::SliderFloat("Size##new-text", pending.Size, 12.0f, 64.0f);
         int pickedTx = RenderPaletteRow("-tx", "Custom", pending.Color);
         if (pickedTx >= 0) {
             pending.Color = (pickedTx < int(g_Palette.Length)) ? g_Palette[pickedTx].Color : S_CustomColor;
         }
 
-        // InputText absorbs Enter internally, so we re-poll it here to let Enter commit.
         bool commit = UI::IsKeyPressed(UI::Key::Enter);
         bool cancel = UI::IsKeyPressed(UI::Key::Escape);
 
@@ -354,9 +324,6 @@ void CloseTextInput() {
     g_TextInputOpen = false;
     g_TextInputNeedsFocus = false;
     g_TextInputBuffer = "";
-    // If the popup is closing without a successful commit, drop the pending TextLabel too.
     if (cast<TextLabel>(g_Pending) !is null) @g_Pending = null;
-    // Text is one-shot: revert to Pen, but only if the user is still on Text — they may
-    // have switched tools while the popup was open, and we shouldn't override that.
     if (g_CurrentTool == Tool::Text) g_CurrentTool = Tool::Pen;
 }
