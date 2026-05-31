@@ -16,12 +16,11 @@ Made by **Trev_TM** ([Twitch](https://www.twitch.tv/trev_tm)) and improved by me
 
 ## Default hotkeys
 
-| Action | Key |
-| --- | --- |
-| Toggle drawing | `F7` |
-| Undo | `Z` |
-| Redo | `Y` |
-| Clear | `C` |
+| *action* 		    | *Key* |
+| Toggle drawing  | `F7` 	|
+| Undo 			      | `Z` 	|
+| Redo 			      | `Y` 	|
+| Clear 		      | `C`	  |
 
 All hotkeys are configurable in Openplanet's settings dialog and can be individually disabled if they collide with your TM controls.
 
@@ -32,9 +31,6 @@ All hotkeys are configurable in Openplanet's settings dialog and can be individu
 - **Delete (Select tool)** — remove the selected mark
 - **Enter / Escape** — close / cancel a polygon mid-build
 
-## Install
-
-Install via the Openplanet plugin manager in-game, or drop this folder into `OpenplanetNext/Plugins/`.
 
 ## License
 
